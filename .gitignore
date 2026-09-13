@@ -365,21 +365,5 @@ FodyWeavers.xsd
 !docs/screenshots/
 !docs/screenshots/*.png
 
-# Old VS tree under docs (binaries / caches) — use docs/reference/ for sources
-docs/Project1/.vs/
-docs/Project1/x64/
-docs/Project1/Project1/
-docs/Project1/**/x64/
-docs/Project1/**/*.pdb
-docs/Project1/**/*.ipch
-docs/Project1/**/*.exe
-docs/Project1/**/*.obj
-docs/Project1/**/*.ilk
-docs/Project1/**/*.tlog/
-docs/Project1/**/Browse.VC.db
-docs/Project1/**/*.VC.db
-docs/Project1/**/*.idb
-docs/Project1/**/*.recipe
-docs/Project1/**/*.log
-*.ipch
-Browse.VC.db
+# Old VS tree under docs — sources live in docs/reference/ instead
+docs/Project1/
