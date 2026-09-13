@@ -1,224 +1,225 @@
-# Notepad_Application
+# Professional Notepad Application
 
-Windows **console notepad** for a Data Structures assignment. The document is a **2-D linked grid** (`Node` with `left` / `right` / `up` / `down`), not a `char[][]` buffer. File menu: new, load, save, exit. Visual Studio project id **i222327_Assignment02**.
+Windows **console notepad** for a Data Structures assignment — upgraded to a **professional editor**.
 
-**Sources:** `Header.h`, `Source.cpp`  
+The document is a **2-D linked grid** of `Node` cells (`left` / `right` / `up` / `down`), **not** a `char[][]` buffer.  
+**Undo / redo** use a **doubly-linked list of `EditCommand` nodes** (command pattern), not an array stack.
+
+**Author:** Mohammad Rohaan (22I-2327) · [rohaan2802](https://github.com/rohaan2802)  
 **Solution:** `Project1.sln` · `i222327_Assignment02.vcxproj`  
-**Author:** Mohammad Rohaan (22I-2327) · [rohaan2802](https://github.com/rohaan2802)
+**Sources:** `Header.h`, `Source.cpp`
 
-`rohaan.txt` in this repo restates the brief: do **not** use arrays for the document; use linked lists; map keys for save / next line; insertion and deletion must work before undo/redo would be marked.
+> **Demo without building:** open [`docs/screenshots/`](docs/screenshots/) — 20 PNGs cover every major feature.
+
+<p align="center">
+  <img src="docs/screenshots/01-main-menu.png" alt="Main menu" width="720" />
+</p>
 
 ---
 
 ## Table of contents
 
-1. [What this program does](#what-this-program-does)
-2. [Architecture](#architecture)
-3. [Data structure](#data-structure)
-4. [File-by-file](#file-by-file)
-5. [Console geometry and chrome](#console-geometry-and-chrome)
-6. [Menus and persistence](#menus-and-persistence)
-7. [Keyboard input (`Source.cpp`)](#keyboard-input-sourcecpp)
-8. [Load-file editor (`load_file`)](#load-file-editor-load_file)
-9. [Data files](#data-files)
-10. [Build and run](#build-and-run)
-11. [Limitations](#limitations)
-12. [Author](#author)
+1. [Features](#features)
+2. [Screenshot gallery](#screenshot-gallery)
+3. [Architecture](#architecture)
+4. [Keymap](#keymap)
+5. [Data structure](#data-structure)
+6. [Samples](#samples)
+7. [Build and run](#build-and-run)
+8. [Test cases](#test-cases)
+9. [Assignment compliance](#assignment-compliance)
+10. [Author](#author)
 
 ---
 
-## What this program does
+## Features
 
-1. Maximize the console (`maximizeConsole` / `ShowWindow(..., SW_MAXIMIZE)`).
-2. Show a numbered file menu (`show_menu`).
-3. Draw a framed writing area (`display_fun`).
-4. Accept letters, arrows, Enter, Backspace, and **F1** (back to menu).
-5. Store each typed character in a `linked_list` of `Node` cells and, on insert, append to a `.txt` file via `insert_character`.
+| Area | What you get |
+|------|----------------|
+| Document model | Single shared `Document` (fixes old dual `list` / `list1` bug) |
+| Typing | Letters, digits, punctuation, space (printable ASCII 32–126) |
+| Editing | Backspace, Delete, Enter (split / join lines) |
+| Navigation | Arrows, Home / End, Ctrl+Home / Ctrl+End |
+| Undo / Redo | `Ctrl+Z` / `Ctrl+Y` via linked `EditCommand` list |
+| Files | New, Open, Save, Save As (menu + hotkeys); dirty `*` flag |
+| Search | `Ctrl+F` + highlighted match; `F3` find next (wraps) |
+| Replace | `Ctrl+H` find + replace with history recording |
+| Suggestions | Live **WORD SUGGESTIONS** from a linked dictionary |
+| Clipboard | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` (word or line) |
+| Status bar | Path, dirty, line/col, word/char counts, undo/redo flags |
+| Help | `F1` keymap overlay; menu option 6 |
+| Safety | Unsaved-change prompts on New / Open / Exit |
 
-This is a **custom text editor**, not Microsoft Notepad. Digits, punctuation, and Unicode are not part of the insert path in `main`.
+---
+
+## Screenshot gallery
+
+| # | Screenshot | Feature shown |
+|---|------------|----------------|
+| 1 | ![menu](docs/screenshots/01-main-menu.png) | Main menu |
+| 2 | ![new](docs/screenshots/02-new-file.png) | New file |
+| 3 | ![empty](docs/screenshots/03-editor-empty.png) | Empty editor chrome |
+| 4 | ![type](docs/screenshots/04-typing-text.png) | Typing text + digits/punctuation |
+| 5 | ![nav](docs/screenshots/05-navigation-arrows.png) | Cursor navigation |
+| 6 | ![bksp](docs/screenshots/06-backspace-delete.png) | Backspace / Delete |
+| 7 | ![undo](docs/screenshots/07-undo-command.png) | Undo (command list) |
+| 8 | ![redo](docs/screenshots/08-redo-command.png) | Redo |
+| 9 | ![find](docs/screenshots/09-search-prompt.png) | Find prompt |
+| 10 | ![hl](docs/screenshots/10-search-highlight.png) | Search highlight |
+| 11 | ![sug](docs/screenshots/11-word-suggestions.png) | Word suggestions |
+| 12 | ![save](docs/screenshots/12-save-success.png) | Save success |
+| 13 | ![open](docs/screenshots/13-open-load.png) | Open / load |
+| 14 | ![status](docs/screenshots/14-status-bar.png) | Status bar |
+| 15 | ![help](docs/screenshots/15-help-keymap.png) | Help / keymap overlay |
+| 16 | ![repl](docs/screenshots/16-replace-dialog.png) | Replace |
+| 17 | ![clip](docs/screenshots/17-clipboard-paste.png) | Clipboard paste |
+| 18 | ![exit](docs/screenshots/18-exit-confirm.png) | Exit confirm |
+| 19 | ![arch](docs/screenshots/19-architecture-overview.png) | Architecture overview |
+| 20 | ![poem](docs/screenshots/20-sample-poem.png) | Loaded sample poem |
+
+<p align="center">
+  <img src="docs/screenshots/04-typing-text.png" width="480" />
+  <img src="docs/screenshots/10-search-highlight.png" width="480" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/07-undo-command.png" width="480" />
+  <img src="docs/screenshots/15-help-keymap.png" width="480" />
+</p>
 
 ---
 
 ## Architecture
 
 ```text
-main()                    Header.h globals + menu
-  maximizeConsole()
-  show_menu()             1 New / 2 Load / 3 Save / 4 Exit
-  display_fun()           frame + SEARCH / WORD SUGGESTIONS chrome
-  ReadConsoleInput loop   arrows, letters, Enter, Backspace, F1
-        │
-        ├── list.insert_at_end / list.delete_at_end / list.fun1
-        ├── insert_character  → ofstream append to file_
-        └── F1 → show_menu()
+main()
+  └─ NotepadApp::run()
+        ├─ showMainMenu()          New / Open / Save / Save As / Edit / Help / Exit
+        └─ ReadConsoleInput loop
+              ├─ Document          2D linked Node grid
+              ├─ CommandHistory    doubly-linked EditCommand list
+              └─ Dictionary        linked WordNode list (suggestions)
 ```
 
-`Header.h` is not a pure header: it **defines** `Node`, `linked_list`, `show_menu`, `create_file`, `load_file`, `insert_character`, `save_file`, and Win32 helpers. `Source.cpp` includes it and runs the live editor loop.
+`Header.h` declares types and the app API.  
+`Source.cpp` implements the document, history, dictionary, UI, and `main`.
 
-Two list objects exist:
+---
 
-| Object | Where | Used by |
-|--------|--------|---------|
-| `list1` | `Header.h` | `load_file` |
-| `list` | `Source.cpp` | `main` key loop |
+## Keymap
 
-They do **not** share nodes. Loading a file fills `list1`; typing in the main loop fills `list`.
+| Key | Action |
+|-----|--------|
+| printable ASCII | Insert character into linked grid |
+| Enter | New line (split row) |
+| Backspace | Delete left / join with previous line |
+| Delete | Delete under cursor / join with next line |
+| Arrows | Move cursor |
+| Home / End | Start / end of line |
+| Ctrl+Home / Ctrl+End | Start / end of document |
+| Ctrl+N | New file |
+| Ctrl+O | Open file |
+| Ctrl+S | Save |
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
+| Ctrl+F | Find |
+| F3 | Find next |
+| Ctrl+H | Replace |
+| Ctrl+C / X / V | Copy / Cut / Paste |
+| F1 | Toggle help overlay |
+| Esc | Return to main menu |
 
 ---
 
 ## Data structure
 
 ```text
-class Node
+Node
   char data
-  Node* left, *right, *up, *down
-  Node(char value)  // all links nullptr
+  Node* left, *right   // characters on a line
+  Node* up, *down      // row spine (row-head links)
 
-class linked_list
-  Node* head
-  insert_at_end(char value, int &x, int &y)
-  delete_at_end(int x, int y)
-  fun1(int x)              // reprint one row at gotoxy(1, x)
-  delete_from_file()       // rewrite file_ from the grid
+EditCommand
+  CmdKind kind         // InsertChar | DeleteChar | InsertLine | JoinLine
+  char ch
+  int row, col
+  EditCommand* prev, *next
+
+CommandHistory
+  head_ / current_     // current_ = last executed; redo uses current_->next
 ```
 
-`insert_at_end` walks `down` `x` times (creating `\0` row sentinels if needed), then `right` `y` times (creating `\0` column sentinels), then splices a new character node and wires `up`/`down` to the previous row.
-
-`delete_at_end` walks to `(x, y)`, copies the next node’s `data` leftward (or writes `'\0'`), then calls `delete_from_file()`.
-
-The assignment point is that **links are the document**. Cursor motion uses integer `x`,`y` plus `gotoxy`, not a stored “current node” pointer.
+Empty lines keep a placeholder node (`data == '\0'`, no `right`) so the row spine stays valid.
 
 ---
 
-## File-by-file
+## Samples
 
-| File | Role |
-|------|------|
-| `Header.h` | Constants, globals, `Node` / `linked_list`, menu, file I/O, Win32 UI |
-| `Source.cpp` | `main`: maximize, menu, `ReadConsoleInput` editor |
-| `Project1.sln` | Visual Studio solution |
-| `i222327_Assignment02.vcxproj` | MSBuild project (assignment id) |
-| `i222327_Assignment02.vcxproj.filters` | Solution Explorer filters |
-| `er.txt` | Sample / scratch text (may be empty) |
-| `rohaan.txt` | Assignment notes plus leftover typed text |
-| `.gitattributes` / `.gitignore` | Git metadata |
+| File | Purpose |
+|------|---------|
+| `samples/welcome.txt` | Overview + search demo text |
+| `samples/poem.txt` | Short poem |
+| `samples/notes.txt` | Checklist-style notes |
+| `samples/search_demo.txt` | Find / replace (`needle`) |
+| `samples/charset.txt` | Digits + punctuation |
 
----
-
-## Console geometry and chrome
-
-From `Header.h`:
-
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `left_` | 1 | Left of writing area |
-| `top_` | 0 | Top row |
-| `right_` | 143 | Right bound |
-| `bottom_` | 31 | Bottom row |
-
-`gotoxy` uses `SetConsoleCursorPosition`. `clear_fun` overwrites 30 rows with spaces. Hitting `y == bottom_ && x == right_ - 1` sets `isFull` and calls `warning_msg()` (`MessageBox`: “Writing space is full.”).
-
-`display_fun` prints a pipe-bordered banner that includes the word **SEARCH** on the first line and **WORD SUGGESTIONS** under the frame. Those labels are **layout only**; there is no search or dictionary function.
-
----
-
-## Menus and persistence
-
-`show_menu` (invalid choice recurses; Save uses `goto label`):
-
-| Choice | Action |
-|--------|--------|
-| 1 New File | `create_file()` |
-| 2 Load File | `load_file(x, y, isFull)` |
-| 3 Save File | If `safe_flag`, `saved_msg()`; else “CREATE FILE FIRST OR LOAD FILE” |
-| 4 Exit | If `safe_flag`, `confrim_msg()`; `IDYES` → `saved_msg()` then `exit(0)` |
-
-`create_file` / `load_file` read up to **12** name characters, then append `.txt` into `file_[20]`. `create_file` opens the file and sets `safe_flag = true`.
-
-Declared helpers:
-
-- `insert_character(char ch)` — `ios::app` one character to `file_`
-- `save_file()` — `list1.delete_from_file()` (rewrites from **`list1`**, not `Source.cpp`’s `list`)
-- `confrim_msg()` — “Do you want to save the file before exiting?” (`MB_YESNO`)
-- `saved_msg()` — “File saved successfully!”
-
-Menu cases 3 and 4 **never call** `save_file()`. Typing in `main` persists only through `insert_character` appends. Backspace in `main` rewrites via `list.delete_from_file()`.
-
-Globals: `ofstream obj1`, `ifstream obj_2`, `flag`, `safe_flag`, `isFull`, `file_`.
-
----
-
-## Keyboard input (`Source.cpp`)
-
-`main` uses `GetNumberOfConsoleInputEvents` / `ReadConsoleInput` on `INPUT_RECORD` (up to 200 events). First key clears the frame via `clear_fun`.
-
-| Key | Handler |
-|-----|---------|
-| `VK_UP` / `VK_DOWN` | Move `y` within `top_`…`bottom_` |
-| `VK_LEFT` | Decrement `x` if `x > left_` |
-| `VK_RIGHT` | If `x < right_ - 1`, `insert_character(' ')` and increment `x` |
-| `VK_RETURN` | Next row, `x = left_`, `insert_character('\n')` |
-| `VK_BACK` | `list.delete_at_end(y, x)` then `list.fun1(y)` to redraw the row |
-| `VK_F1` | `cls` + `show_menu()` |
-| Default / letters | After the `switch`, `AsciiChar` in `A–Z` / `a–z` → `list.insert_at_end` + echo + `insert_character` |
-
-The `while (Running)` loop never sets `Running = false`; exit is `exit(0)` from menu option 4. Space is **not** inserted in this loop (only letters). `VK_RIGHT` appends spaces to the file without inserting a `Node`.
-
----
-
-## Load-file editor (`load_file`)
-
-If `file_` opens:
-
-1. `display_fun()`, then read characters with `obj_2.get`.
-2. Keep letters, space, and `'\n'` (skip other bytes).
-3. Insert into **`list1`** with `insert_at_end(file_char, y, x)` (note argument order vs `main`, which passes `y, x` as well).
-4. Wrap at `right_`; full-buffer → `warning_msg`.
-5. If not full, a nested `_getch()` loop until **Esc (27)**: letters, Backspace, Enter (`\r`), space. Then `show_menu()`.
-
-If the file is missing, it creates `file_` (`ios::out`), sets `safe_flag`, and returns without entering the nested editor.
-
----
-
-## Data files
-
-| File | Contents |
-|------|----------|
-| `er.txt` | Present in the tree; may be empty |
-| `rohaan.txt` | Assignment constraints (no arrays for the document; key mappings; undo/redo not marked unless insert/delete work) plus leftover editor text |
-
-Working directory should be the folder that contains these `.txt` files so `create_file` / `load_file` resolve names.
+Open from the menu with names like `welcome` or `samples/welcome`.
 
 ---
 
 ## Build and run
 
-**Windows only:** `Windows.h`, `conio.h`, `HWND`, `MessageBoxW` (`L"..."` strings), `ReadConsoleInput`.
+**Windows only** (Win32 console APIs + `MessageBoxW`).
 
-1. Open `Project1.sln` in Visual Studio (Console subsystem).
-2. Build and run, or `cl Source.cpp` with the Windows SDK (the `.cpp` includes `Header.h`).
-3. Choose 1 or 2, then type in the frame. **F1** returns to the menu. **Esc** leaves the load-file nested editor.
+1. Open `Project1.sln` in Visual Studio 2022, or:
+2. MSBuild:
 
-There is no CMake/`g++` portable path: `MessageBox` and console APIs are Win32.
+```bat
+"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" Project1.sln /p:Configuration=Debug /p:Platform=x64
+```
+
+3. Run `x64\Debug\Project1.exe` from the project folder (so `samples/` resolves).
+
+Verified locally: **Debug | x64** build succeeds.
 
 ---
 
-## Limitations
+## Test cases
 
-- **SEARCH** and **WORD SUGGESTIONS** are printed labels only.
-- No undo/redo (mentioned in `rohaan.txt`; not implemented).
-- `save_file()` is unused by the menu; Save/Exit dialogs do not rewrite the grid.
-- Dual lists (`list` vs `list1`) desynchronize load vs type-in-`main`.
-- Insert in `main` is letters only; load path also allows space/newline.
-- `file_[20]` and other C arrays exist for names/UI; the **document** is the linked grid.
-- `show_menu` uses `goto` and recursion on invalid input.
-- Implementations live in `Header.h` (slower incremental builds, ODR risk if included twice).
+| ID | Steps | Expected |
+|----|-------|----------|
+| T01 | Menu → 1 New → type `Hello` | Characters appear; status words/chars update; dirty `*` |
+| T02 | Type letters + `123!?,.` | All printable ASCII inserts |
+| T03 | Enter mid-line | Line splits; cursor at col 1 of new row |
+| T04 | Backspace mid-word | Previous char removed; undo available |
+| T05 | Delete at EOL with next line | Lines join |
+| T06 | Ctrl+Z then Ctrl+Y | Text restores via command list |
+| T07 | Type more after undo | Redo branch discarded |
+| T08 | Ctrl+S Save As `demo` | `demo.txt` written from grid |
+| T09 | Restart → Open `demo` | Content reloads into linked list |
+| T10 | Open `samples/welcome` → Ctrl+F `linked` → F3 | Match highlighted; next wraps |
+| T11 | Ctrl+H replace `needle`→`target` | First match replaced; dirty |
+| T12 | Type `und` | Suggestions show `undo` |
+| T13 | Ctrl+C word, move, Ctrl+V | Word pasted |
+| T14 | F1 | Keymap overlay toggles |
+| T15 | Edit then menu Exit without save | Confirm dialog appears |
+| T16 | Fill a long line to pane width | “Space full” warning; no crash |
 
-**Extend (only if you add it):** one shared list; call `save_file` from menu 3/4; wire search; digits/punctuation; real undo stack.
+---
+
+## Assignment compliance
+
+From `rohaan.txt`:
+
+- **No array document** — text lives only in the `Node` grid.
+- **Linked lists for structure** — rows/cols + undo/redo commands + dictionary words.
+- **Intuitive keys** — documented above and in the F1 overlay.
+- **Insert / delete before undo/redo** — both work and are recorded as commands.
+- **You test thoroughly** — see the table above; samples exercise search/replace.
 
 ---
 
 ## Author
 
 **Mohammad Rohaan** — 22I-2327  
-[https://github.com/rohaan2802](https://github.com/rohaan2802)
+[https://github.com/rohaan2802](https://github.com/rohaan2802)  
+Project: [Notepad_Application](https://github.com/rohaan2802/Notepad_Application)

@@ -1,0 +1,6 @@
+Feature: Status bar — filename, dirty flag, Ln/Col, chars, words, lines
++--------------------------------------------------------------------------------+
+| Counting characters words and lines from the Node traversal.                   |
+| Real-world editors always surface document metrics.                            |
++--------------------------------------------------------------------------------+
+File: report.txt * | Ln 2  Col 18 | Chars 96  Words 15  Lines 3

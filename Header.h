@@ -1,588 +1,222 @@
 #pragma once
+#ifndef NOTEPAD_HEADER_H
+#define NOTEPAD_HEADER_H
 
-#ifndef Header_H
-#define Header_H
-
-#include <iostream>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#include<conio.h>
-#include<fstream>
-using namespace std;
+#include <conio.h>
 
-const int left_ = 1;
-const int top_ = 0;
-const int right_ = 143;
-const int bottom_ = 31;
-int x = left_, y = top_;
-ofstream obj1;
-ifstream obj_2;
-bool flag = false;
-bool safe_flag = false;
-bool isFull = false;
-char file_[20];
-void load_file(int& x,int& y,bool& isFull);
-void create_file();
-void insert_character(char ch);
-void save_file();
+#include <fstream>
+#include <iostream>
+#include <string>
 
-int confrim_msg() 
-{
-    return MessageBox(NULL, L"Do you want to save the file before exiting?", L"Confirm Exit", MB_YESNO | MB_ICONQUESTION);
-}
+// Console geometry (writing pane)
+const int PANE_LEFT = 2;
+const int PANE_TOP = 2;
+const int PANE_RIGHT = 118;
+const int PANE_BOTTOM = 28;
+const int STATUS_ROW = 30;
+const int SUGGEST_ROW = 32;
+const int MAX_SUGGESTIONS = 6;
 
-void saved_msg()
-{
-    MessageBox(NULL, L"File saved successfully!", L"Success", MB_OK | MB_ICONINFORMATION);
-}
-
-
-void  show_menu() 
-{
-    label:
-    int choice = 0,val;
-    cout << "\n\n\n\n\n\n\n\n";
-    cout << "\t\t\t\t\t\t\t\t************************ MAIN MENU:   ************************\n";
-    cout << "\t\t\t\t\t\t\t\t************************ 1. New File  ************************\n";
-    cout << "\t\t\t\t\t\t\t\t************************ 2. Load File ************************\n";
-    cout << "\t\t\t\t\t\t\t\t************************ 3. Save File ************************\n";
-    cout << "\t\t\t\t\t\t\t\t************************ 4.   Exit    ************************\n\n";
-    cout << "\t\t\t\t\t\t\t\t\t\t\tEnter your choice: ";
-    cin >> choice;
-
-    switch (choice) 
-    {
-    case 1:
-        system("cls");
-        create_file();
-        system("pause");
-        system("cls");
-        return ;
-        break;
-    case 2:
-        system("cls");
-        load_file(x,y,isFull);
-        cout << "\n\n\n\n\n\n\t\t\t\t\t\t";
-        system("pause");
-        system("cls");
-        return ;
-        break;
-    case 3:
-        if (safe_flag==true)
-        {
-            saved_msg();
-        }
-        else
-        {
-            system("cls");
-            cout << "\n\n\n\n\n\n\t\t\t\t\t\t";
-            cout << "\n\n\n\t\t\t\t\t\t\t\t\t************** CREATE FILE FIRST OR LOAD FILE  **************\n\n\t\t\t\t\t\t\t\t\t";
-            system("pause");
-            system("cls");
-        }
-             system("cls");
-            goto label;
-        
-        return ;
-        break;
-    case 4:
-        if (safe_flag==true)
-        {
-            val = confrim_msg();
-            if (val == IDYES)
-            {
-                saved_msg();
-            }
-        }
-        exit(0);
-        break;
-    default:
-        cout << "\n\n\n\t\t\t\t\t\t\t\t\t************** INVALID CHOICE  **************\n\n\t\t\t\t\t\t\t\t\t";
-        system("pause");
-        system("cls");
-        show_menu();
-        break;
-    }
-}
-
-
-
-void gotoxy(int x, int y)
-{
-	COORD c = { x, y };
-	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
-}
-
-void clear_fun()
-{
-	for (int i = 0; i < 30; i++)
-	{
-		gotoxy(1, i);
-		cout << "                                                                                                                  ";
-	}
-	gotoxy(1, 0);
-}
-
-void warning_msg()
-{
-	MessageBox(NULL, L"Writing space is full.", L"Space Full", MB_ICONWARNING | MB_OK);
-}
-
-void maximizeConsole()
-{
-	HWND consoleWindow = GetConsoleWindow();
-	ShowWindow(consoleWindow, SW_MAXIMIZE);
-}
-
-void display_fun() 
-{
-	cout << "| Welcome to the Notepad.                                                                                                                      | SEARCH" << endl;
-	cout << "| This is the area where you are supposed to write the content.                                                                                |" << endl;
-	for (int i = 0; i < 30; i++)
-		cout << "|                                                                                                                                              |" << endl;
-	cout << "|______________________________________________________________________________________________________________________________________________|" << endl << endl;
-	cout << "  WORD SUGGESTIONS\n\n";
-}
-
-class Node
-{
-public:
+// ---------- Document: 2-D linked grid (no char[][] buffer) ----------
+struct Node {
     char data;
     Node* left;
     Node* right;
     Node* up;
     Node* down;
 
-    Node(char value)
-    {
-        data = value;
-        left = right = up = down = nullptr;
-    }
+    explicit Node(char value = '\0')
+        : data(value), left(nullptr), right(nullptr), up(nullptr), down(nullptr) {}
 };
 
-class linked_list
-{
-private:
-    Node* head;
-
+class Document {
 public:
-    linked_list()
-    {
-        head = nullptr;
-    }
+    Document();
+    ~Document();
 
-    void insert_at_end(char value, int &x, int &y)
-    {
-        Node* newNode = new Node(value);
+    void clear();
+    bool empty() const;
 
-        if (head == nullptr)
-        {
-            head = newNode;
-            return;
-        }
+    int cursorRow() const { return row_; }
+    int cursorCol() const { return col_; }
+    void setCursor(int r, int c);
 
-        Node* current = head;
-        Node* prev = nullptr;
+    void moveLeft();
+    void moveRight();
+    void moveUp();
+    void moveDown();
+    void moveHome();
+    void moveEnd();
+    void moveDocHome();
+    void moveDocEnd();
 
-        for (int i = 0; i < x; i++)
-        {
-            if (current->down != nullptr)
-            {
-                prev = current;
-                current = current->down;
-            }
-            else
-            {
-                Node* new_row = new Node('\0');
-                current->down = new_row;
-                new_row->up = current;
-                prev = current;
-                current = new_row;
-            }
-        }
+    // Insert printable / space at cursor; advances cursor. Returns false if full.
+    bool insertChar(char ch);
+    // Insert newline (split / new row).
+    bool insertNewline();
+    // Backspace: erase char left of cursor.
+    bool backspace(char& removed);
+    // Delete: erase char under cursor.
+    bool deleteForward(char& removed);
 
-        Node* new_current = current;
-        for (int j = 0; j < y; j++)
-        {
-            if (new_current->right != nullptr)
-            {
-                new_current = new_current->right;
-            }
-            else
-            {
+    // Undo helpers that do not move semantics beyond explicit positions.
+    bool insertAt(int r, int c, char ch);
+    bool eraseAt(int r, int c, char& removed);
+    bool insertNewlineAt(int r, int c);
+    bool joinLineWithPrevious(int r);
 
-                Node* newColNode = new Node('\0');
-                new_current->right = newColNode;
-                newColNode->left = new_current;
-                new_current = newColNode;
-            }
-        }
+    int lineCount() const;
+    int lineLength(int r) const;
+    int wordCount() const;
+    int charCount() const;
 
-        newNode->left = new_current->left;
-        newNode->right = new_current;
-        if (new_current->left != nullptr)
-        {
-            new_current->left->right = newNode;
-        }
-        new_current->left = newNode;
-        if (prev != nullptr)
-        {
-            Node* upper_ch = prev;
-            for (int j = 0; j < y; j++)
-            {
-                if (upper_ch->right != nullptr)
-                {
-                    upper_ch = upper_ch->right;
-                }
-            }
-            newNode->up = upper_ch;
-            upper_ch->down = newNode;
-        }
-      
-    }
+    char charAt(int r, int c) const;
+    std::string lineText(int r) const;
+    std::string wordAtCursor() const;
+    std::string allText() const;
 
+    bool findNext(const std::string& query, int& outRow, int& outCol, bool wrap) const;
+    bool replaceAtCursor(const std::string& findStr, const std::string& replaceStr);
 
+    bool saveToFile(const std::string& path) const;
+    bool loadFromFile(const std::string& path);
 
-   
+    void render(int highlightRow, int highlightCol, int highlightLen) const;
 
-    void delete_at_end(int x, int y)
-    {
-        Node* current = head;
-        for (int i = 0; i < x; i++)
-        {
-            if (current->down != nullptr)
-            {
-                current = current->down;
-            }
-            else
-            {
-                return; 
-            }
-        }
+private:
+    Node* head_;
+    int row_;
+    int col_;
 
-        Node* new_current = current;
-        for (int j = 0; j < y; j++)
-        {
-            if (new_current->right != nullptr)
-            {
-                new_current = new_current->right;
-            }
-            else
-            {
-                return; 
-            }
-        }
-
-        if (new_current->right != nullptr)
-        {
-            Node* nextNode = new_current->right;
-            new_current->data = nextNode->data; 
-            new_current->right = nextNode->right;
-
-            if (nextNode->right != nullptr)
-            {
-                nextNode->right->left = new_current;
-            }
-
-            delete nextNode; 
-        }
-        else
-        {
-            new_current->data = '\0';
-        }
-
-        delete_from_file();
-    }
-
-
-    void fun1(int x)
-    {
-        Node* current = head;
-        for (int i = 0; i < x; i++)
-        {
-            if (current->down != nullptr)
-            {
-                current = current->down;
-            }
-            else
-            {
-                return; 
-            }
-        }
-
-        gotoxy(1, x); 
-        for (Node* new_current = current; new_current != nullptr; new_current = new_current->right)
-        {
-            cout << new_current->data; 
-        }
-        while (current != nullptr)
-        {
-            cout << " ";
-            current = current->right;
-        }
-    }
-
-
-    void delete_from_file()
-    {
-        obj1.open(file_, ios::trunc);
-        if (obj1.is_open())
-        {
-            Node* currentRow = head;
-            while (currentRow != nullptr)
-            {
-                Node* currentChar = currentRow;
-                while (currentChar != nullptr)
-                {
-                    if (currentChar->data != '\0') 
-                    {
-                        obj1 << currentChar->data; 
-                    }
-                    currentChar = currentChar->right; 
-                }
-                obj1 << '\n'; 
-                currentRow = currentRow->down; 
-            }
-            obj1.close();   
-        }
-       
-    }
-
-
+    Node* rowHead(int r) const;
+    Node* nodeAt(int r, int c) const;
+    Node* ensureRow(int r);
+    void destroy();
+    int maxRows() const { return PANE_BOTTOM - PANE_TOP + 1; }
+    int maxCols() const { return PANE_RIGHT - PANE_LEFT; }
 };
 
+// ---------- Undo / redo: doubly-linked command list ----------
+enum class CmdKind {
+    InsertChar,
+    DeleteChar,   // backspace or delete recorded with position of removed char
+    InsertLine,
+    JoinLine      // undo of InsertLine
+};
 
-linked_list list1;
-
-void create_file()
-{
-    cout << "\n\n\n\n\n\n\n\n";
-    cout << "\t\t\t\t\t\t\t\tEnter the new file name :         ";
+struct EditCommand {
+    CmdKind kind;
     char ch;
-    int i = 0;
-    cin.ignore();
-    while (i < 12 && (ch = cin.get()) != '\n')
-    {
+    int row;
+    int col;
+    EditCommand* prev;
+    EditCommand* next;
 
-        file_[i++] = ch;
-    }
-    file_[i++] = '.';
-    file_[i++] = 't';
-    file_[i++] = 'x';
-    file_[i++] = 't';
-    file_[i++] = '\0';
-    obj1.open(file_);
-    if (obj1.is_open())
-    {
+    EditCommand(CmdKind k, char c, int r, int co)
+        : kind(k), ch(c), row(r), col(co), prev(nullptr), next(nullptr) {}
+};
 
-        cout << "\n\n\n\n";
-        cout << "\t\t\t\t\t\t\t\tFile " << file_ << " created successfully.\n\n\t\t\t\t\t\t\t\t\t";
-        for (int j = 0; j < 19; j++)
-        {
-            file_[j] = file_[j];
-        }
-        obj1.close();
-        safe_flag = true;
+class CommandHistory {
+public:
+    CommandHistory();
+    ~CommandHistory();
 
-        return;
-    }
-    else
-    {
-        cout << "\n\n\n\n";
-        cout << "\t\t\t\t\t\t\t\tError creating file.\n\n\t\t\t\t\t\t\t\t";
-        system("pause");
-        system("cls");
-        create_file();
-    }
-}
+    void clear();
+    void record(CmdKind kind, char ch, int row, int col);
+    bool canUndo() const;
+    bool canRedo() const;
+    bool undo(Document& doc);
+    bool redo(Document& doc);
 
-void load_file(int &x,int &y,bool &isFull)
-{
-    cout << "\n\n\n\n\n\n\n\n";
-    cout << "\t\t\t\t\t\t\t\tEnter the file name to load:       ";
-    char ch;
-    int i = 0;
-    cin.ignore();
-    while (i < 12 && (ch = cin.get()) != '\n')
-    {
-        file_[i++] = ch;
-    }
-    file_[i++] = '.';
-    file_[i++] = 't';
-    file_[i++] = 'x';
-    file_[i++] = 't';
-    file_[i++] = '\0';
+private:
+    EditCommand* head_;
+    EditCommand* current_; // last executed command; redo uses current_->next
 
-    obj_2.open(file_);
+    void discardRedoBranch();
+    void destroyList(EditCommand* n);
+};
 
-    if (obj_2.is_open())
-    {
-        cout << "\n\n\n\n";
-        cout << "\t\t\t\t\t\t\t\tFILE " << file_ << " EXISTS. LOADING DATA.......\n\n\t\t\t\t\t\t\t\t";
-        system("pause");
-        system("cls");
-        display_fun();
-     
-        gotoxy(x, y);
+// ---------- Dictionary suggestions (linked list of words) ----------
+struct WordNode {
+    std::string word;
+    WordNode* next;
+    explicit WordNode(const std::string& w) : word(w), next(nullptr) {}
+};
 
-        char file_char;
-        while (obj_2.get(file_char) && !isFull)  
-        {
-            if ((file_char >= 'A' && file_char <= 'Z') || (file_char >= 'a' && file_char <= 'z') || file_char == ' ' || file_char == '\n')
-            {
-                if (file_char == '\n')
-                {
-                    y++;
-                    x = left_;  
-                }
-                else
-                {
-                    list1.insert_at_end(file_char, y, x);
-                    cout << file_char;
-                    x++;
-                }
+class Dictionary {
+public:
+    Dictionary();
+    ~Dictionary();
+    void suggest(const std::string& prefix, WordNode*& outHead, int maxCount) const;
 
-                if (x >= right_)
-                {
-                    x = left_;  
-                    y++;  
-                }
+private:
+    WordNode* words_;
+    void add(const char* w);
+};
 
-                if (y == bottom_ && x == right_ - 1)
-                {
-                    isFull = true;
-                    warning_msg();  
-                }
+// ---------- Editor / UI ----------
+class NotepadApp {
+public:
+    NotepadApp();
+    int run();
 
-                gotoxy(x, y);
-            }
+private:
+    Document doc_;
+    CommandHistory history_;
+    Dictionary dictionary_;
 
+    std::string filePath_;
+    bool dirty_;
+    bool running_;
+    bool showHelp_;
 
-        }
+    std::string findQuery_;
+    std::string replaceQuery_;
+    int hlRow_;
+    int hlCol_;
+    int hlLen_;
 
+    std::string clipboard_;
 
-        obj_2.close();
+    void maximizeConsole();
+    void gotoxy(int x, int y) const;
+    void clearScreen() const;
+    void drawChrome() const;
+    void drawStatus() const;
+    void drawSuggestions() const;
+    void refresh();
 
+    void showMainMenu();
+    bool promptFileName(const char* title, std::string& out);
+    bool confirmDiscard();
+    void messageBoxInfo(const wchar_t* text, const wchar_t* caption) const;
+    int messageBoxYesNo(const wchar_t* text, const wchar_t* caption) const;
 
+    void actionNew();
+    void actionOpen();
+    void actionSave();
+    void actionSaveAs();
+    void actionFind();
+    void actionFindNext();
+    void actionReplace();
+    void actionCopy();
+    void actionCut();
+    void actionPaste();
+    void actionHelp();
+    void actionUndo();
+    void actionRedo();
 
-        if (!isFull)
-        {
-            char ch;
-            while ((ch = _getch()) != 27)
-            {
-                if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'))
-                {
-                    list1.insert_at_end(ch, y, x);
-                    cout << ch;
-                    insert_character(ch);
-                    x++;
+    void handleKey(const KEY_EVENT_RECORD& key);
+    void typeChar(char ch);
+    void doBackspace();
+    void doDelete();
+    void doEnter();
 
-                    if (x >= right_)
-                    {
-                        x = left_;
-                        y++;
-                    }
+    std::string readPromptLine(const char* label);
+};
 
-                    if (y == bottom_ && x == right_ - 1)
-                    {
-                        isFull = true;
-                        warning_msg();
-                        break;
-                    }
-
-                    gotoxy(x, y);
-                }
-                    else if (ch == '\b') 
-                    {
-                        if (x > left_)
-                        {
-                            x--;
-                            list1.delete_at_end(y, x); 
-                            gotoxy(x, y);
-                            cout << ' '; 
-                            gotoxy(x, y); 
-                        }
-                    }
-                    else if (ch == '\r') 
-                    {
-                        y++; 
-                        x = left_; 
-                        gotoxy(x, y); 
-                    }
-                    else if (ch == ' ') 
-                {
-                    list1.insert_at_end(' ', y, x);
-                    cout << ' '; 
-                    x++;
-
-                    if (x >= right_)
-                    {
-                        x = left_;
-                        y++;
-                    }
-
-                    if (y == bottom_ && x == right_ - 1)
-                    {
-                        isFull = true;
-                        warning_msg();
-                        break;
-                    }
-
-                    gotoxy(x, y);
-                }
-            }
-            system("cls");
-            show_menu();
-        }
-    }
-    else
-    {
-        cout << "\n\n\n\n";
-        cout << "\t\t\t\t\t\t\t\tFILE " << file_ << " DOESN'T EXIST. CREATE A NEW FILE......\n\n\t\t\t\t\t\t\t\t";
-        system("pause");
-        system("cls");
-
-        obj1.open(file_, ios::out);
-        if (obj1.is_open())
-        {
-            cout << "\n\n\n\n\n\n\n\n\n";
-
-            cout << "\t\t\t\t\t\t\t\tFile " << file_ << " created successfully.\n\n\t\t\t\t\t\t\t\t\t";
-            safe_flag = true;
-            system("pause");
-            system("cls");
-
-            for (int j = 0; j < i; j++)
-            {
-                file_[j] = file_[j];
-            }
-            file_[i] = '\0';
-            obj1.close();
-
-        }
-
-       
-        obj1.close();
-
-    }
-}
-
-
-void insert_character(char ch) 
-{
-    obj1.open(file_, ios::app);
-    if (obj1.is_open()) 
-    {
-        obj1 << ch; 
-        obj1.close(); 
-    }
-    
-}
-
-void save_file()
-{
-    list1.delete_from_file();
-}
-
-
+void setConsoleTitleBar(const wchar_t* title);
 
 #endif

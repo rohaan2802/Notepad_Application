@@ -1,0 +1,7 @@
+Feature: Backspace (left delete) and Delete (forward erase)
++--------------------------------------------------------------------------------+
+| Before: mistkae                                                                |
+| After Backspace/Delete: mistake_                                               |
+| Insertion + deletion both update the linked grid.                              |
++--------------------------------------------------------------------------------+
+File: notes.txt * | Ln 2  Col 15 | Chars 52  Words 8  Lines 3

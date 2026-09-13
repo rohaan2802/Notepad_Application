@@ -1,0 +1,5 @@
+Welcome to Pro Notepad!
+Document storage is a 2D linked list (left / right / up / down).
+Features: New Open Save Undo Redo Find Replace Suggestions Clipboard.
+Type letters to see WORD SUGGESTIONS built from your own document.
+Assignment rule: no char array for the document body.

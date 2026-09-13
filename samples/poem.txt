@@ -1,0 +1,4 @@
+Roses are red,
+violets are blue,
+linked lists hold text,
+and undo can too.

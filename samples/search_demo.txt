@@ -1,0 +1,3 @@
+Find the needle in this haystack of words.
+needle appears once near the start.
+Later we replace needle with target during demo.

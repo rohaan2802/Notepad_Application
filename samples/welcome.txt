@@ -1,0 +1,6 @@
+Welcome to the Professional Notepad sample.
+
+This document is stored as a 2D linked list of nodes
+with left, right, up, and down pointers -- not a char array.
+
+Try search for the word linked, then undo and redo edits.
