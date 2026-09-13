@@ -8,18 +8,38 @@
 
 #include <fstream>
 #include <iostream>
-#include <string>
+#include <cctype>
+#include <cstring>
+#include <cstdlib>
 
-// Console geometry (writing pane)
-const int PANE_LEFT = 2;
-const int PANE_TOP = 2;
-const int PANE_RIGHT = 118;
-const int PANE_BOTTOM = 28;
-const int STATUS_ROW = 30;
-const int SUGGEST_ROW = 32;
-const int MAX_SUGGESTIONS = 6;
+// ---------------------------------------------------------------------------
+// Fixed console layout (~60% text / ~20% right Search / ~20% bottom Suggestions)
+// Total roughly 120 cols x 40 rows. Frames are fixed (non-scrollable).
+// ---------------------------------------------------------------------------
+const int SCREEN_COLS = 120;
+const int SCREEN_ROWS = 40;
 
-// ---------- Document: 2-D linked grid (no char[][] buffer) ----------
+const int TEXT_LEFT = 1;
+const int TEXT_TOP = 2;
+const int TEXT_COLS = 72;   // ~60% of width
+const int TEXT_ROWS = 22;   // ~55-60% of height
+
+const int SEARCH_LEFT = 76;
+const int SEARCH_TOP = 2;
+const int SEARCH_COLS = 42; // ~20%+ right pane
+const int SEARCH_ROWS = 22;
+
+const int SUGGEST_TOP = 26;
+const int SUGGEST_ROWS = 8; // ~20% bottom
+const int STATUS_ROW = 35;
+
+const int MAX_SUGGESTIONS = 8;
+const int WORD_STACK_CAP = 5;
+const int MAX_PATH_BUF = 260;
+const int MAX_QUERY_BUF = 64;
+const int MAX_WORD_BUF = 96;
+
+// ---------- Document: 2-D linked grid (left/right/up/down ONLY) ----------
 struct Node {
     char data;
     Node* left;
@@ -52,20 +72,15 @@ public:
     void moveDocHome();
     void moveDocEnd();
 
-    // Insert printable / space at cursor; advances cursor. Returns false if full.
+    // Insert letter/space; whole-word wrap; strips trailing spaces on lines.
     bool insertChar(char ch);
-    // Insert newline (split / new row).
     bool insertNewline();
-    // Backspace: erase char left of cursor.
     bool backspace(char& removed);
-    // Delete: erase char under cursor.
     bool deleteForward(char& removed);
 
-    // Undo helpers that do not move semantics beyond explicit positions.
-    bool insertAt(int r, int c, char ch);
-    bool eraseAt(int r, int c, char& removed);
-    bool insertNewlineAt(int r, int c);
-    bool joinLineWithPrevious(int r);
+    // Word-level helpers for undo/redo stacks
+    bool eraseWordAt(int r, int c, int len);
+    bool insertWordAt(int r, int c, const char* word);
 
     int lineCount() const;
     int lineLength(int r) const;
@@ -73,17 +88,20 @@ public:
     int charCount() const;
 
     char charAt(int r, int c) const;
-    std::string lineText(int r) const;
-    std::string wordAtCursor() const;
-    std::string allText() const;
+    void copyLine(int r, char* out, int outCap) const;
+    void copyWordAtCursor(char* out, int outCap) const;
+    int copyAllText(char* out, int outCap) const;
 
-    bool findNext(const std::string& query, int& outRow, int& outCol, bool wrap) const;
-    bool replaceAtCursor(const std::string& findStr, const std::string& replaceStr);
+    bool findNext(const char* query, int& outRow, int& outCol, bool wrap) const;
 
-    bool saveToFile(const std::string& path) const;
-    bool loadFromFile(const std::string& path);
+    bool saveToFile(const char* path) const;
+    bool loadFromFile(const char* path); // false if missing (caller may create)
 
     void render(int highlightRow, int highlightCol, int highlightLen) const;
+
+    // Collect unique document words matching prefix into a linked list of WordNode
+    // (caller frees). Uses CharNode-backed WordNode defined below — see WordNode.
+    void collectPrefixWords(const char* prefix, struct WordNode*& outHead, int maxCount) const;
 
 private:
     Node* head_;
@@ -94,108 +112,131 @@ private:
     Node* nodeAt(int r, int c) const;
     Node* ensureRow(int r);
     void destroy();
-    int maxRows() const { return PANE_BOTTOM - PANE_TOP + 1; }
-    int maxCols() const { return PANE_RIGHT - PANE_LEFT; }
+    void stripTrailingSpaces(int r);
+    int wordStartCol() const;
+    bool wrapCurrentWordToNextLine();
+    int maxRows() const { return TEXT_ROWS; }
+    int maxCols() const { return TEXT_COLS; }
 };
 
-// ---------- Undo / redo: doubly-linked command list ----------
-enum class CmdKind {
-    InsertChar,
-    DeleteChar,   // backspace or delete recorded with position of removed char
-    InsertLine,
-    JoinLine      // undo of InsertLine
-};
-
-struct EditCommand {
-    CmdKind kind;
+// ---------- Char linked list (avoid std::string for words) ----------
+struct CharNode {
     char ch;
-    int row;
-    int col;
-    EditCommand* prev;
-    EditCommand* next;
-
-    EditCommand(CmdKind k, char c, int r, int co)
-        : kind(k), ch(c), row(r), col(co), prev(nullptr), next(nullptr) {}
+    CharNode* next;
+    explicit CharNode(char c = '\0') : ch(c), next(nullptr) {}
 };
 
-class CommandHistory {
+struct WordNode {
+    CharNode* chars;
+    WordNode* next;
+    WordNode() : chars(nullptr), next(nullptr) {}
+};
+
+void freeCharList(CharNode*& head);
+void freeWordList(WordNode*& head);
+CharNode* dupCharList(const CharNode* src);
+void charsFromCStr(CharNode*& head, const char* s);
+void charsToBuf(const CharNode* head, char* buf, int cap);
+int charsLen(const CharNode* head);
+void appendChar(CharNode*& head, char c);
+
+// ---------- Undo / Redo: STACK of WORDS (linked, capacity 5) ----------
+struct WordAction {
+    CharNode* word; // letters of the word (no space)
+    int row;
+    int col;        // start column of the word in the document
+    bool inserted;  // true = word was typed/inserted; undo removes it
+    WordAction* next;
+
+    WordAction()
+        : word(nullptr), row(0), col(0), inserted(true), next(nullptr) {}
+};
+
+class WordStack {
 public:
-    CommandHistory();
-    ~CommandHistory();
+    WordStack();
+    ~WordStack();
 
     void clear();
-    void record(CmdKind kind, char ch, int row, int col);
+    void push(CharNode* wordOwned, int row, int col, bool inserted);
+    WordAction* pop(); // caller owns returned node (or null)
+    bool empty() const { return top_ == nullptr; }
+    int depth() const { return depth_; }
+
+private:
+    WordAction* top_;
+    int depth_;
+    void freeAction(WordAction* a);
+    void dropOldest();
+};
+
+class WordHistory {
+public:
+    WordHistory();
+    ~WordHistory();
+
+    void clear();
+    void recordInsert(CharNode* wordOwned, int row, int col);
+    void recordDelete(CharNode* wordOwned, int row, int col);
     bool canUndo() const;
     bool canRedo() const;
+    int undoDepth() const;
+    int redoDepth() const;
     bool undo(Document& doc);
     bool redo(Document& doc);
 
 private:
-    EditCommand* head_;
-    EditCommand* current_; // last executed command; redo uses current_->next
-
-    void discardRedoBranch();
-    void destroyList(EditCommand* n);
-};
-
-// ---------- Dictionary suggestions (linked list of words) ----------
-struct WordNode {
-    std::string word;
-    WordNode* next;
-    explicit WordNode(const std::string& w) : word(w), next(nullptr) {}
-};
-
-class Dictionary {
-public:
-    Dictionary();
-    ~Dictionary();
-    void suggest(const std::string& prefix, WordNode*& outHead, int maxCount) const;
-
-private:
-    WordNode* words_;
-    void add(const char* w);
+    WordStack undo_;
+    WordStack redo_;
 };
 
 // ---------- Editor / UI ----------
 class NotepadApp {
 public:
     NotepadApp();
+    ~NotepadApp();
     int run();
 
 private:
     Document doc_;
-    CommandHistory history_;
-    Dictionary dictionary_;
+    WordHistory history_;
 
-    std::string filePath_;
+    char filePath_[MAX_PATH_BUF];
     bool dirty_;
     bool running_;
     bool showHelp_;
+    bool extendedMode_; // Ctrl+E: allow digits/punct (OFF = rubric alpha-only)
 
-    std::string findQuery_;
-    std::string replaceQuery_;
+    char findQuery_[MAX_QUERY_BUF];
+    char replaceQuery_[MAX_QUERY_BUF];
     int hlRow_;
     int hlCol_;
     int hlLen_;
 
-    std::string clipboard_;
+    CharNode* pendingWord_; // letters typed since last Space/Enter/word boundary
+    int pendingRow_;
+    int pendingCol_;
+
+    CharNode* clipboard_;
 
     void maximizeConsole();
     void gotoxy(int x, int y) const;
     void clearScreen() const;
+    void setColor(WORD attr) const;
     void drawChrome() const;
+    void drawSearchPane() const;
     void drawStatus() const;
     void drawSuggestions() const;
     void refresh();
 
     void showMainMenu();
-    bool promptFileName(const char* title, std::string& out);
+    bool promptFileName(const char* title, char* out, int outCap);
     bool confirmDiscard();
     void messageBoxInfo(const wchar_t* text, const wchar_t* caption) const;
     int messageBoxYesNo(const wchar_t* text, const wchar_t* caption) const;
 
     void actionNew();
-    void actionOpen();
+    void actionLoad();
     void actionSave();
     void actionSaveAs();
     void actionFind();
@@ -207,14 +248,17 @@ private:
     void actionHelp();
     void actionUndo();
     void actionRedo();
+    void actionToggleExtended();
 
     void handleKey(const KEY_EVENT_RECORD& key);
     void typeChar(char ch);
+    void commitPendingWord();
     void doBackspace();
     void doDelete();
     void doEnter();
 
-    std::string readPromptLine(const char* label);
+    void readPromptLine(const char* label, char* out, int outCap);
+    bool isAllowedChar(char ch) const;
 };
 
 void setConsoleTitleBar(const wchar_t* title);

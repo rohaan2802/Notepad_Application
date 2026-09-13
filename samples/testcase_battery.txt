@@ -1,0 +1,18 @@
+# Test-case narrative covering T01 through T20 (alpha-only demo text)
+
+Test one creates a new file and types hello then checks the status bar for line column words and dirty state
+Test two confirms digits and punctuation are ignored unless extended mode is enabled with control E
+Test three presses enter in the middle of a line so the remainder moves down as a new linked list row
+Test four backspaces inside a word and watches characters shift left inside the two dimensional node grid
+Test five deletes at the end of a line that has a following line and joins the rows without losing text
+Test six undoes the last completed word using the linked word stack and test seven redoes that same word
+Test eight saves the document and test nine reloads it verifying missing files are auto created on load
+Test ten uses control F to search from the right search pane and F three finds the next match with highlight
+Test eleven replaces a word as an extra feature while test twelve shows live prefix suggestions from document words
+Test thirteen copies a word and pastes it test fourteen toggles F one help with the full rubric keymap
+Test fifteen exits with unsaved changes and is prompted to save before quitting the notepad application
+Test sixteen fills a long line until whole word wrap moves the unfinished word entirely to the next line
+Test seventeen confirms no trailing spaces remain when a line ends after enter or save operations
+Test eighteen moves the cursor with arrows home and end without entering empty regions beyond existing text
+Test nineteen verifies undo and redo never touch actions older than five words beyond the stack capacity
+Test twenty reviews the sixty twenty twenty layout frames for text search and suggestions on screen
