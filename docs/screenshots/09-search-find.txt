@@ -1,0 +1,9 @@
+Feature: Ctrl+F Find — jump cursor to next match (F3 = Find Next)
+  Find text: linked
+
++--------------------------------------------------------------------------------+
+| Welcome to Pro Notepad!                                                        |
+| Document storage is a 2D LINKED list (left / right / up / down)._               |
+| Features: New Open Save Undo Redo Find Replace Suggestions Clipboard.          |
++--------------------------------------------------------------------------------+
+Find: "linked"  | match at Ln 2  Col 27

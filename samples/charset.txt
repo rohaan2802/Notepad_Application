@@ -1,0 +1,2 @@
+abcdefghijklmnopqrst digits 0123456789 and punctuation: Hello, world! Ready?
+Ctrl keys: save, find, replace, undo, redo, copy, cut, paste.

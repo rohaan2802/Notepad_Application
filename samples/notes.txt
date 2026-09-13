@@ -1,0 +1,6 @@
+Meeting notes
+- Finish insert and delete
+- Wire undo redo command list
+- Add search replace and suggestions
+- Save load with dirty flag
+- Take screenshots for README

@@ -1,0 +1,7 @@
+Feature: Unsaved-changes protection (real-world safety)
+[ MessageBox — Confirm ]
+  Document has unsaved changes. Save before continue?
+     [ Yes ]    [ No ]
+
+  Dirty flag (*) set after any insert/erase.
+  Exit / New / Open all route through this guard.
