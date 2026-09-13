@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Project docs: keep screenshot PNGs tracked (do not ignore docs/screenshots/)
+!docs/screenshots/
+!docs/screenshots/*.png
