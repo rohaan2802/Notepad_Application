@@ -1,0 +1,16 @@
+NOTE
+ You are not allowed to declare any array of any kind for any reason Whenever such
+functionality is desired use linked lists
+ You can use any key for functionalities such as saving undoing redoing and
+moving to the next line Ensure that the key mappings are intuitive and clearly
+documented
+ Please note that no marks will be awarded for the undo and redo functionalities if
+the insertion and deletion features are not functioning correctly It is essential to
+first ensure that text insertion and deletion operate as expected before
+implementing and testing undoredo features
+ Please note that no test cases will be provided for this assignment You are
+responsible for thoroughly testing your program by creating a comprehensive and
+wellstructured main function Ensure that your main function handles all
+edge cases validates input and demonstrates the full functionality of your
+notepad application including insertion 
+dsersdwerserererervvrerfffddcdscsdds

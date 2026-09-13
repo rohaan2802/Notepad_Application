@@ -1,0 +1,8 @@
+# Long-paragraph demo for whole-word wrap (Assignment 02)
+# Letters and spaces only — matches default ALPHA-ONLY mode.
+
+The quick brown fox jumps over the lazy dog while students practice building a two dimensional linked list notepad that stores every character in a node with left right up and down pointers instead of a character array buffer
+
+Whole word wrap means that when a word cannot fit in the remaining columns of the current line the entire word moves to the next line so no mid word splitting ever occurs during typing in the main text pane of this console application
+
+Data structures assignment two requires alphabetic insertion only by default along with enter to split lines backspace and delete to shift text undo and redo stacks that operate on words with a capacity of five and a fixed window layout of about sixty percent text twenty percent search and twenty percent suggestions
