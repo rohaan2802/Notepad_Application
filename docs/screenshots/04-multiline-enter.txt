@@ -1,7 +1,0 @@
-Feature: Enter / newline — vertical links between rows
-+--------------------------------------------------------------------------------+
-| Line one uses Enter for next row in the 2D list.                               |
-| Line two proves up/down pointers between rows.                                 |
-| Line three shows real multiline editing._                                      |
-+--------------------------------------------------------------------------------+
-File: notes.txt * | Ln 3  Col 40 | Chars 118  Words 22  Lines 3

@@ -1,7 +1,0 @@
-Feature: Live WORD SUGGESTIONS from document vocabulary (linked WordNode list)
-+--------------------------------------------------------------------------------+
-| Features include save load undo redo find replace suggest_                     |
-+--------------------------------------------------------------------------------+
-
-Prefix 'suggest' → suggestions harvested from document word nodes
-File: demo.txt * | Ln 1  Col 58

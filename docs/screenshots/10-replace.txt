@@ -1,8 +1,0 @@
-Feature: Ctrl+H Replace — erase match nodes, insert replacement
-  Find: list
-  Replace with: mesh
-
-  Before: 2D linked list
-  After : 2D linked mesh_
-
-  [ MessageBox ] Replaced one occurrence.

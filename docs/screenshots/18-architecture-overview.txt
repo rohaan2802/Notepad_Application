@@ -1,9 +1,0 @@
-Architecture snapshot for README / viva
-  main/menu ──► editorLoop (ReadConsoleInput)
-       │
-       ├── Document (Node 2D grid)  insert/erase/find/save/load
-       ├── History  (EditCmd linked stack)  undo/redo
-       ├── WordNode linked list  suggestions
-       └── Win32  clipboard + MessageBox dialogs
-
-  Requirement satisfied: document is links, not arrays.

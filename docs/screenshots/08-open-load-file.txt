@@ -1,9 +1,0 @@
-Feature: Open/Load — rebuild Node grid from file bytes
-  Enter file name to open: demo.txt
-
-  LOADING samples/demo.txt ...
-  ------------------------------------------------
-  Welcome to Pro Notepad!
-  Document storage is a 2D linked list ...
-  Features: New Open Save Undo Redo Find Replace...
-File: demo.txt  | Ln 1  Col 1 | loaded clean

@@ -1,8 +1,0 @@
-Feature: Save — persist entire linked document to disk
-[ MessageBox ]
-  Title: Saved
-  Text : File saved successfully!
-
-  Ctrl+S / F2 rewrites the .txt from the linked list
-  (full serialize of every Node row/column).
-File: demo.txt   | dirty cleared after save

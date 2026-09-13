@@ -1,6 +1,0 @@
-Feature: Clipboard integration (Win32 CF_TEXT)
-  Ctrl+C  → copy current line to Windows clipboard
-  Ctrl+V  → paste clipboard text into linked grid
-
-  Line copied: "Features: New Open Save Undo Redo Find Replace"
-  After paste on next row: duplicate line present in Node mesh.

@@ -1,9 +1,0 @@
-Feature: Ctrl+Z Undo / Ctrl+Y Redo via linked command history
-  Action stack (linked EditCmd list — not document snapshots):
-    1. Insert 'x'
-    2. Insert 'y'
-    3. Erase 'y'     ← Ctrl+Z undoes
-    4. Ctrl+Y redoes erase inverse
-
-  Document after Undo: ...x_
-  Assignment rule: undo/redo only after insert/delete work.
