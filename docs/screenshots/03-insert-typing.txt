@@ -1,6 +1,0 @@
-Feature: Character insert into Node grid (letters + punctuation)
-+--------------------------------------------------------------------------------+
-| Hello Linked List Notepad!_                                                    |
-|                                                                                |
-+--------------------------------------------------------------------------------+
-File: (untitled) * | Ln 1  Col 26 | Chars 25  Words 4  Lines 1

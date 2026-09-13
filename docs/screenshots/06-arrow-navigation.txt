@@ -1,7 +1,0 @@
-Feature: Cursor navigation across the 2D linked structure
-+--------------------------------------------------------------------------------+
-| Navigate with arrows / Home / End / PageUp / PageDown.                         |
-| Cursor rests on 'N' of Notepad  (row 2, col 11).                               |
-| The cursor is independent; document remains the Node mesh.                     |
-+--------------------------------------------------------------------------------+
-File: notes.txt  | Ln 2  Col 11 | Chars 120  Words 20  Lines 4

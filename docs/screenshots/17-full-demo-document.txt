@@ -1,9 +1,0 @@
-Demo: Fully loaded sample document (samples/demo.txt)
-+--------------------------------------------------------------------------------+
-| Welcome to Pro Notepad!                                                        |
-| Document storage is a 2D linked list (left / right / up / down).                |
-| Features: New Open Save Undo Redo Find Replace Suggestions Clipboard.          |
-| Type letters to see WORD SUGGESTIONS built from your own document.             |
-| Assignment rule: no char array for the document body._                         |
-+--------------------------------------------------------------------------------+
-File: demo.txt  | Ln 5  Col 52 | Chars 280  Words 45  Lines 5

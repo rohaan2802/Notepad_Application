@@ -1,7 +1,0 @@
-Feature: F1 Help — complete shortcut reference
-===================== PRO NOTEPAD — KEYBOARD MAP =====================
-Editing     : type / Enter / Backspace / Delete / Tab
-Navigation  : Arrows Home End PageUp PageDown
-File        : Ctrl+N  Ctrl+O  Ctrl+S/F2  Ctrl+Shift+S  Esc
-Power       : Ctrl+Z/Y  Ctrl+F/F3  Ctrl+H  Ctrl+C/V  F1 Help
-Storage     : Node{left,right,up,down} — no char[][] document buffer
