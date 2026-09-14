@@ -12,7 +12,7 @@ The document is a **2-D linked grid** of `Node` cells (`left` / `right` / `up` /
 **Solution:** `Project1.sln` · `i222327_Assignment02.vcxproj`  
 **Sources:** `Header.h`, `Source.cpp`
 
-> **Demo without building:** open [`docs/screenshots/`](docs/screenshots/) — **30 PNGs** (01–20 feature tour + 21–30 rubric / long-paragraph / test-battery).
+> Browse the full visual walkthrough in [`docs/screenshots/`](docs/screenshots/) — **30** annotated panels covering the editor UI, core editing flows, and assignment rubric scenarios (including long-paragraph wrap and end-to-end test cases).
 
 <p align="center">
   <img src="docs/screenshots/28-layout-60-20-20.png" alt="60/20/20 layout" width="720" />
