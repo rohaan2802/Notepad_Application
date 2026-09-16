@@ -1626,50 +1626,44 @@ void NotepadApp::drawChrome() const {
 
 void NotepadApp::drawSearchPane() const {
     setColor(attrSearch());
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP);
-    cout << " SEARCH PANE";
-    for (int i = 12; i < SEARCH_COLS - 1; ++i) cout << ' ';
+    const int inner = SEARCH_COLS - 1; // space inside right border
+    auto putRow = [&](int y, const char* text) {
+        gotoxy(SEARCH_LEFT + 1, y);
+        int n = text ? static_cast<int>(strlen(text)) : 0;
+        if (n > inner) n = inner;
+        for (int i = 0; i < n; ++i) cout << text[i];
+        for (int i = n; i < inner; ++i) cout << ' ';
+    };
 
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 2);
-    cout << "Ctrl+F query:";
-    for (int i = 13; i < SEARCH_COLS - 1; ++i) cout << ' ';
+    putRow(SEARCH_TOP, " SEARCH PANE");
+    putRow(SEARCH_TOP + 2, "Ctrl+F query:");
 
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 3);
     if (findQuery_[0]) {
-        cout << "\"";
-        int n = static_cast<int>(strlen(findQuery_));
-        if (n > SEARCH_COLS - 4) n = SEARCH_COLS - 4;
-        for (int i = 0; i < n; ++i) cout << findQuery_[i];
-        cout << "\"";
-        for (int i = n + 2; i < SEARCH_COLS - 1; ++i) cout << ' ';
+        char buf[128];
+        int qn = static_cast<int>(strlen(findQuery_));
+        if (qn > 40) qn = 40;
+        buf[0] = '"';
+        for (int i = 0; i < qn; ++i) buf[i + 1] = findQuery_[i];
+        buf[qn + 1] = '"';
+        buf[qn + 2] = '\0';
+        putRow(SEARCH_TOP + 3, buf);
     } else {
-        cout << "(none)";
-        for (int i = 6; i < SEARCH_COLS - 1; ++i) cout << ' ';
+        putRow(SEARCH_TOP + 3, "(none)");
     }
 
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 5);
-    cout << "Find results:";
-    for (int i = 16; i < SEARCH_COLS - 1; ++i) cout << ' ';
-
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 6);
+    putRow(SEARCH_TOP + 5, "Find results:");
     if (findQuery_[0] && hlLen_ > 0) {
-        cout << "hit @ Ln " << (hlRow_ + 1) << " Col " << (hlCol_ + 1);
-        for (int i = 20; i < SEARCH_COLS - 1; ++i) cout << ' ';
+        char buf[64];
+        sprintf_s(buf, "hit @ Ln %d Col %d", hlRow_ + 1, hlCol_ + 1);
+        putRow(SEARCH_TOP + 6, buf);
     } else if (findQuery_[0]) {
-        cout << "No match highlighted";
-        for (int i = 20; i < SEARCH_COLS - 1; ++i) cout << ' ';
+        putRow(SEARCH_TOP + 6, "No match highlighted");
     } else {
-        cout << "No search yet";
-        for (int i = 22; i < SEARCH_COLS - 1; ++i) cout << ' ';
+        putRow(SEARCH_TOP + 6, "No search yet");
     }
 
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 8);
-    cout << "F3 = Find Next";
-    for (int i = 14; i < SEARCH_COLS - 1; ++i) cout << ' ';
-
-    gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 10);
-    cout << "Mode: " << (extendedMode_ ? "Letters + Symbols + Numbers" : "Letters Only");
-    for (int i = 20; i < SEARCH_COLS - 1; ++i) cout << ' ';
+    putRow(SEARCH_TOP + 8, "F3 = Find Next");
+    putRow(SEARCH_TOP + 10, extendedMode_ ? "Mode: AlphaNumeric" : "Mode: Letters only");
     setColor(attrNormal());
 }
 
@@ -1706,9 +1700,39 @@ void NotepadApp::drawSuggestions() {
     setColor(attrSuggest());
     gotoxy(2, SUGGEST_TOP);
     char prefix[MAX_WORD_BUF];
-    doc_.copyWordAtCursor(prefix, MAX_WORD_BUF);
+    prefix[0] = '\0';
+    // Build prefix from the token at the cursor (letters always; digits/symbols too).
+    {
+        char line[512];
+        doc_.copyLine(doc_.cursorRow(), line, 512);
+        int len = static_cast<int>(strlen(line));
+        int c = doc_.cursorCol();
+        if (c > len) c = len;
+        auto isTok = [](char ch) {
+            unsigned char u = static_cast<unsigned char>(ch);
+            return isalnum(u) || (ch >= 33 && ch <= 126 && ch != ' ');
+        };
+        int i = c;
+        if (i > 0 && (i >= len || !isTok(line[i]))) --i;
+        if (i >= 0 && i < len && isTok(line[i])) {
+            int a = i, b = i;
+            while (a > 0 && isTok(line[a - 1])) --a;
+            while (b + 1 < len && isTok(line[b + 1])) ++b;
+            // Prefix = token start through cursor (Notepad-style completion).
+            int end = c;
+            if (end < a) end = a;
+            if (end > b + 1) end = b + 1;
+            int n = end - a;
+            if (n >= MAX_WORD_BUF) n = MAX_WORD_BUF - 1;
+            if (n < 0) n = 0;
+            for (int k = 0; k < n; ++k) prefix[k] = line[a + k];
+            prefix[n] = '\0';
+        }
+    }
     WordNode* list = nullptr;
-    doc_.collectPrefixWords(prefix, list, MAX_SUGGESTIONS, extendedMode_);
+    // Suggestions work in Letters-only AND AlphaNumeric modes.
+    // Always include letter words; in AlphaNumeric also digit/symbol tokens.
+    doc_.collectPrefixWords(prefix, list, MAX_SUGGESTIONS, true);
     suggestCount_ = 0;
     for (int i = 0; i < MAX_SUGGESTIONS; ++i) suggestCache_[i][0] = '\0';
 
@@ -1783,7 +1807,16 @@ if (showHelp_) {
         }
     }
 
-    gotoxy(TEXT_LEFT + doc_.cursorCol(), TEXT_TOP + doc_.cursorRow());
+    // Keep the blink cursor inside the notepad pane (real Notepad behavior).
+    // If the doc cursor is past the bottom visible line, ensureCursorVisible()
+    // already scrolled docViewTop_ — map to screen coords within TEXT_ROWS.
+    int screenRow = doc_.cursorRow() - docViewTop_;
+    if (screenRow < 0) screenRow = 0;
+    if (screenRow >= TEXT_ROWS) screenRow = TEXT_ROWS - 1;
+    int screenCol = doc_.cursorCol();
+    if (screenCol < 0) screenCol = 0;
+    if (screenCol >= TEXT_COLS) screenCol = TEXT_COLS - 1;
+    gotoxy(TEXT_LEFT + screenCol, TEXT_TOP + screenRow);
 }
 
 bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
@@ -1880,10 +1913,20 @@ void NotepadApp::actionSelectAll() {
 
 
 void NotepadApp::ensureCursorVisible() {
+    // When the cursor hits the bottom (or top) edge of the notepad pane,
+    // scroll the document view — never place the caret outside the border.
     int r = doc_.cursorRow();
     if (r < docViewTop_) docViewTop_ = r;
-    if (r >= docViewTop_ + TEXT_ROWS) docViewTop_ = r - TEXT_ROWS + 1;
+    while (r >= docViewTop_ + TEXT_ROWS) {
+        ++docViewTop_;
+    }
     if (docViewTop_ < 0) docViewTop_ = 0;
+    int maxTop = doc_.lineCount() - TEXT_ROWS;
+    if (maxTop < 0) maxTop = 0;
+    // Allow one blank line beyond last content so Enter can scroll.
+    if (r + 1 - TEXT_ROWS > maxTop) maxTop = r + 1 - TEXT_ROWS;
+    if (maxTop < 0) maxTop = 0;
+    if (docViewTop_ > maxTop) docViewTop_ = maxTop;
 }
 
 void NotepadApp::getTokenBoundsAtCursor(int& startCol, int& endCol) const {
@@ -2466,6 +2509,8 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
         }
         if (ch >= '1' && ch <= '8' && suggestCount_ > 0) {
             int idx = ch - '1';
+            // Both modes: Alt+1..8 picks. Letters-only: plain 1..8 also picks.
+            // AlphaNumeric: plain digits type normally unless Alt is held.
             if (idx < suggestCount_ && (alt || !extendedMode_)) {
                 actionApplySuggestion(idx);
                 return;
