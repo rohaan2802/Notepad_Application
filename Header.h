@@ -238,6 +238,8 @@ private:
 
     void maximizeConsole();
     void setupConsoleDisplay();
+    void setCookedInput() const;  // menus / cin prompts
+    void setRawEditorInput() const; // ReadConsoleInput editor loop
     void pinViewportTop() const;
     void writePaddedRow(int y, WORD attr, const char* text) const;
     void gotoxy(int x, int y) const;
