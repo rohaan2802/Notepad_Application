@@ -97,11 +97,18 @@ public:
     bool saveToFile(const char* path) const;
     bool loadFromFile(const char* path); // false if missing (caller may create)
 
-    void render(int highlightRow, int highlightCol, int highlightLen) const;
-
     // Collect unique document words matching prefix into a linked list of WordNode
     // (caller frees). Uses CharNode-backed WordNode defined below — see WordNode.
-    void collectPrefixWords(const char* prefix, struct WordNode*& outHead, int maxCount) const;
+    void collectPrefixWords(const char* prefix, struct WordNode*& outHead, int maxCount,
+                            bool allowExtendedTokens) const;
+
+    // Selection / clipboard helpers (inclusive start, exclusive end; may span lines)
+    int copyRange(int r0, int c0, int r1, int c1, char* out, int outCap) const;
+    bool deleteRange(int r0, int c0, int r1, int c1);
+    bool insertTextAtCursor(const char* text, bool allowExtended);
+
+    void render(int highlightRow, int highlightCol, int highlightLen,
+                int selR0, int selC0, int selR1, int selC1, bool selOn) const;
 
 private:
     Node* head_;
@@ -219,17 +226,27 @@ private:
 
     CharNode* clipboard_;
 
+    // Text selection (anchor + cursor). When selOn_, selected range is between
+    // (selAnchorRow_/Col_) and the live cursor.
+    bool selOn_;
+    int selAnchorRow_;
+    int selAnchorCol_;
+
+    // Cached word suggestions for 1-8 / Tab pick
+    char suggestCache_[MAX_SUGGESTIONS][MAX_WORD_BUF];
+    int suggestCount_;
+
     void maximizeConsole();
     void setupConsoleDisplay();
     void pinViewportTop() const;
     void writePaddedRow(int y, WORD attr, const char* text) const;
     void gotoxy(int x, int y) const;
-    void clearScreen() const;
+    void clearScreen(bool resetScroll = true) const;
     void setColor(WORD attr) const;
     void drawChrome() const;
     void drawSearchPane() const;
     void drawStatus() const;
-    void drawSuggestions() const;
+    void drawSuggestions();
     void refresh();
 
     bool showWelcomeScreen();
@@ -246,13 +263,16 @@ private:
     void actionFind();
     void actionFindNext();
     void actionReplace();
+    void actionReplaceAll();
     void actionCopy();
     void actionCut();
     void actionPaste();
+    void actionSelectAll();
     void actionHelp();
     void actionUndo();
     void actionRedo();
     void actionToggleExtended();
+    void actionApplySuggestion(int index); // 0-based
 
     void handleKey(const KEY_EVENT_RECORD& key);
     void typeChar(char ch);
@@ -261,8 +281,15 @@ private:
     void doDelete();
     void doEnter();
 
+    void clearSelection();
+    void ensureSelectionAnchor();
+    void getSelectionBounds(int& r0, int& c0, int& r1, int& c1) const;
+    bool hasSelection() const { return selOn_; }
+    void deleteSelectionIfAny();
+
     void readPromptLine(const char* label, char* out, int outCap);
     bool isAllowedChar(char ch) const;
+    bool isWordChar(char ch) const;
 };
 
 void setConsoleTitleBar(const wchar_t* title);
