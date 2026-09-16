@@ -220,6 +220,9 @@ private:
     CharNode* clipboard_;
 
     void maximizeConsole();
+    void setupConsoleDisplay();
+    void pinViewportTop() const;
+    void writePaddedRow(int y, WORD attr, const char* text) const;
     void gotoxy(int x, int y) const;
     void clearScreen() const;
     void setColor(WORD attr) const;
@@ -229,6 +232,7 @@ private:
     void drawSuggestions() const;
     void refresh();
 
+    bool showWelcomeScreen();
     void showMainMenu();
     bool promptFileName(const char* title, char* out, int outCap);
     bool confirmDiscard();

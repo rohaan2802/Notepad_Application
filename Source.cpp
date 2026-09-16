@@ -10,29 +10,53 @@ static COORD makeCoord(SHORT x, SHORT y) {
 }
 
 static WORD attrNormal() {
-    return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+    /* Bright white on black — high contrast */
+    return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
 }
 static WORD attrDim() {
-    return FOREGROUND_INTENSITY;
+    return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
 }
 static WORD attrTitle() {
+    /* Bright cyan titles */
     return FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
 }
 static WORD attrHighlight() {
+    /* Black text on bright yellow */
     return BACKGROUND_RED | BACKGROUND_GREEN | FOREGROUND_INTENSITY;
 }
 static WORD attrSearch() {
+    /* Bright green search pane */
     return FOREGROUND_GREEN | FOREGROUND_INTENSITY;
 }
 static WORD attrSuggest() {
+    /* Bright yellow suggestions */
     return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
 }
 static WORD attrStatus() {
+    /* White on blue status bar */
     return BACKGROUND_BLUE | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE |
            FOREGROUND_INTENSITY;
 }
+static WORD attrWarn() {
+    return FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+}
+static WORD attrError() {
+    return FOREGROUND_RED | FOREGROUND_INTENSITY;
+}
+static WORD attrOk() {
+    return FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+}
+static WORD attrPrompt() {
+    return FOREGROUND_BLUE | FOREGROUND_INTENSITY;
+}
 
 void setConsoleTitleBar(const wchar_t* title) { SetConsoleTitleW(title); }
+
+static bool isCancelChoice(const char* s) {
+    if (!s || !s[0]) return false;
+    if (s[0] == '0' && s[1] == '\0') return true;
+    return false;
+}
 
 // =============================================================================
 // Char / Word list helpers
@@ -1091,7 +1115,136 @@ NotepadApp::~NotepadApp() {
 
 void NotepadApp::maximizeConsole() {
     HWND w = GetConsoleWindow();
-    if (w) ShowWindow(w, SW_MAXIMIZE);
+    if (!w)
+        return;
+    ShowWindow(w, SW_RESTORE);
+    ShowWindow(w, SW_SHOW);
+    ShowWindow(w, SW_MAXIMIZE);
+    SetForegroundWindow(w);
+}
+
+void NotepadApp::pinViewportTop() const {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (!GetConsoleScreenBufferInfo(hOut, &csbi))
+        return;
+    SHORT lastCol = csbi.dwSize.X > 0 ? static_cast<SHORT>(csbi.dwSize.X - 1) : 0;
+    SHORT lastRow = csbi.dwSize.Y > 0 ? static_cast<SHORT>(csbi.dwSize.Y - 1) : 0;
+    SMALL_RECT vis = { 0, 0, lastCol, lastRow };
+    SetConsoleWindowInfo(hOut, TRUE, &vis);
+    SetConsoleCursorPosition(hOut, makeCoord(0, 0));
+}
+
+void NotepadApp::writePaddedRow(int y, WORD attr, const char* text) const {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    SHORT width = static_cast<SHORT>(SCREEN_COLS);
+    if (GetConsoleScreenBufferInfo(hOut, &csbi) && csbi.dwSize.X > 0)
+        width = csbi.dwSize.X;
+
+    setColor(attr);
+    gotoxy(0, y);
+    int n = text ? static_cast<int>(strlen(text)) : 0;
+    if (n > width)
+        n = width;
+    if (n > 0)
+        cout.write(text, n);
+    for (int i = n; i < width; ++i)
+        cout.put(' ');
+    cout.flush();
+}
+
+void NotepadApp::setupConsoleDisplay() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE || hOut == NULL)
+        return;
+
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+
+    DWORD mode = 0;
+    if (GetConsoleMode(hOut, &mode)) {
+        mode |= ENABLE_PROCESSED_OUTPUT;
+        mode &= ~ENABLE_WRAP_AT_EOL_OUTPUT;
+        SetConsoleMode(hOut, mode);
+    }
+
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD inMode = 0;
+    if (GetConsoleMode(hIn, &inMode)) {
+        inMode |= ENABLE_EXTENDED_FLAGS;
+        inMode &= ~ENABLE_QUICK_EDIT_MODE;
+        SetConsoleMode(hIn, inMode);
+    }
+
+    RECT wa;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+    int pxW = wa.right - wa.left;
+    int pxH = wa.bottom - wa.top - GetSystemMetrics(SM_CYCAPTION) - 16;
+    if (pxW < 640) pxW = 640;
+    if (pxH < 400) pxH = 400;
+
+    SHORT fontY = static_cast<SHORT>(pxH / SCREEN_ROWS);
+    // Prefer a larger readable font; still scale with window height.
+    if (fontY > 36) fontY = 36;
+    if (fontY < 22) fontY = 22;
+
+    CONSOLE_FONT_INFOEX cfi;
+    ZeroMemory(&cfi, sizeof(cfi));
+    cfi.cbSize = sizeof(cfi);
+    GetCurrentConsoleFontEx(hOut, FALSE, &cfi);
+    cfi.dwFontSize.X = 0;
+    cfi.dwFontSize.Y = fontY;
+    wcscpy_s(cfi.FaceName, L"Consolas");
+    SetCurrentConsoleFontEx(hOut, FALSE, &cfi);
+
+    SMALL_RECT tiny = { 0, 0, 1, 1 };
+    SetConsoleWindowInfo(hOut, TRUE, &tiny);
+
+    COORD starter = { static_cast<SHORT>(SCREEN_COLS), static_cast<SHORT>(SCREEN_ROWS) };
+    SetConsoleScreenBufferSize(hOut, starter);
+    SMALL_RECT starterWin = { 0, 0, static_cast<SHORT>(SCREEN_COLS - 1),
+                              static_cast<SHORT>(SCREEN_ROWS - 1) };
+    SetConsoleWindowInfo(hOut, TRUE, &starterWin);
+
+    maximizeConsole();
+    Sleep(40);
+
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    SHORT cols = static_cast<SHORT>(SCREEN_COLS);
+    SHORT rows = static_cast<SHORT>(SCREEN_ROWS);
+    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+        SHORT visCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+        SHORT visRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+        if (visCols > cols) cols = visCols;
+        if (visRows > rows) rows = visRows;
+    }
+    if (cols < SCREEN_COLS) cols = static_cast<SHORT>(SCREEN_COLS);
+    if (rows < SCREEN_ROWS) rows = static_cast<SHORT>(SCREEN_ROWS);
+
+    SetConsoleWindowInfo(hOut, TRUE, &tiny);
+    COORD buf = { cols, rows };
+    SetConsoleScreenBufferSize(hOut, buf);
+    pinViewportTop();
+    maximizeConsole();
+    pinViewportTop();
+
+    // Re-read visible window and force buffer == window (kills scroll ghosts).
+    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+        SHORT visCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+        SHORT visRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+        if (visCols < 40) visCols = 40;
+        if (visRows < 20) visRows = 20;
+        SetConsoleWindowInfo(hOut, TRUE, &tiny);
+        COORD exact = { visCols, visRows };
+        SetConsoleScreenBufferSize(hOut, exact);
+        SMALL_RECT exactWin = { 0, 0, static_cast<SHORT>(visCols - 1),
+                                static_cast<SHORT>(visRows - 1) };
+        SetConsoleWindowInfo(hOut, TRUE, &exactWin);
+        pinViewportTop();
+    }
+
+    setColor(attrNormal());
 }
 
 void NotepadApp::gotoxy(int x, int y) const {
@@ -1099,7 +1252,45 @@ void NotepadApp::gotoxy(int x, int y) const {
                              makeCoord(static_cast<SHORT>(x), static_cast<SHORT>(y)));
 }
 
-void NotepadApp::clearScreen() const { system("cls"); }
+void NotepadApp::clearScreen() const {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    pinViewportTop();
+    if (!GetConsoleScreenBufferInfo(hOut, &csbi)) {
+        system("cls");
+        pinViewportTop();
+        return;
+    }
+
+    // Shrink buffer to the visible window so old rows cannot scroll back as ghosts.
+    SHORT visCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+    SHORT visRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+    if (visCols > 0 && visRows > 0) {
+        if (csbi.dwSize.X != visCols || csbi.dwSize.Y != visRows) {
+            SMALL_RECT tiny = { 0, 0, 1, 1 };
+            SetConsoleWindowInfo(hOut, TRUE, &tiny);
+            COORD exact = { visCols, visRows };
+            SetConsoleScreenBufferSize(hOut, exact);
+            SMALL_RECT exactWin = { 0, 0, static_cast<SHORT>(visCols - 1),
+                                    static_cast<SHORT>(visRows - 1) };
+            SetConsoleWindowInfo(hOut, TRUE, &exactWin);
+            if (!GetConsoleScreenBufferInfo(hOut, &csbi)) {
+                system("cls");
+                pinViewportTop();
+                return;
+            }
+        }
+    }
+
+    DWORD cells = static_cast<DWORD>(csbi.dwSize.X) * static_cast<DWORD>(csbi.dwSize.Y);
+    DWORD written = 0;
+    COORD home = { 0, 0 };
+    WORD fillAttr = attrNormal();
+    FillConsoleOutputCharacterA(hOut, ' ', cells, home, &written);
+    FillConsoleOutputAttribute(hOut, fillAttr, cells, home, &written);
+    SetConsoleCursorPosition(hOut, home);
+    pinViewportTop();
+}
 
 void NotepadApp::setColor(WORD attr) const {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), attr);
@@ -1125,11 +1316,11 @@ bool NotepadApp::isAllowedChar(char ch) const {
 void NotepadApp::drawChrome() const {
     setColor(attrTitle());
     gotoxy(0, 0);
-    cout << "+-- Notepad (2D Linked List) -- Alpha-only (Ctrl+E Extended) "
-            "---------------------------+\n";
+    cout << "+-- NOTEPAD APPLICATION -- Interactive Editor "
+            "-------------------------------------------+\n";
     setColor(attrDim());
-    cout << "| Esc Menu | F1 Help | Ctrl+N/O/S | Ctrl+Z/Y Word Undo/Redo | Ctrl+F Search"
-            " | F3 Next   |\n";
+    cout << "| Esc=Menu | 0/Esc Back | F1 Help | Ctrl+N/O/S | Ctrl+Z/Y Undo/Redo | "
+            "Ctrl+F Search | F3 Next |\n";
 
     // Text pane left border + Search right pane borders
     for (int y = TEXT_TOP; y < TEXT_TOP + TEXT_ROWS; ++y) {
@@ -1152,7 +1343,7 @@ void NotepadApp::drawChrome() const {
     // Suggestions frame
     setColor(attrSuggest());
     gotoxy(0, SUGGEST_TOP - 1);
-    cout << "| WORD SUGGESTIONS (live prefix from document) ";
+    cout << "| Word suggestions ";
     for (int i = 0; i < 70; ++i) cout << ' ';
     cout << '|';
     for (int y = SUGGEST_TOP; y < SUGGEST_TOP + SUGGEST_ROWS - 1; ++y) {
@@ -1192,7 +1383,7 @@ void NotepadApp::drawSearchPane() const {
     }
 
     gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 5);
-    cout << "Matches / Assn3:";
+    cout << "Find results:";
     for (int i = 16; i < SEARCH_COLS - 1; ++i) cout << ' ';
 
     gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 6);
@@ -1200,10 +1391,10 @@ void NotepadApp::drawSearchPane() const {
         cout << "hit @ Ln " << (hlRow_ + 1) << " Col " << (hlCol_ + 1);
         for (int i = 20; i < SEARCH_COLS - 1; ++i) cout << ' ';
     } else if (findQuery_[0]) {
-        cout << "no current highlight";
+        cout << "No match highlighted";
         for (int i = 20; i < SEARCH_COLS - 1; ++i) cout << ' ';
     } else {
-        cout << "placeholder for Assn3";
+        cout << "No search yet";
         for (int i = 22; i < SEARCH_COLS - 1; ++i) cout << ' ';
     }
 
@@ -1212,7 +1403,7 @@ void NotepadApp::drawSearchPane() const {
     for (int i = 14; i < SEARCH_COLS - 1; ++i) cout << ' ';
 
     gotoxy(SEARCH_LEFT + 1, SEARCH_TOP + 10);
-    cout << "Mode: " << (extendedMode_ ? "EXTENDED" : "ALPHA-ONLY");
+    cout << "Mode: " << (extendedMode_ ? "Letters+symbols" : "Letters only");
     for (int i = 20; i < SEARCH_COLS - 1; ++i) cout << ' ';
     setColor(attrNormal());
 }
@@ -1225,7 +1416,7 @@ void NotepadApp::drawStatus() const {
          << ", Col " << (doc_.cursorCol() + 1) << " | Words " << doc_.wordCount() << " | Chars "
          << doc_.charCount() << " | Undo:" << history_.undoDepth() << "/" << WORD_STACK_CAP
          << " Redo:" << history_.redoDepth() << "/" << WORD_STACK_CAP
-         << (extendedMode_ ? " | EXT" : " | ALPHA") << " | F1 Help          ";
+         << (extendedMode_ ? " | Letters+symbols" : " | Letters only") << " | F1 Help";
     setColor(attrNormal());
 }
 
@@ -1250,12 +1441,13 @@ void NotepadApp::drawSuggestions() const {
     }
     freeWordList(list);
     gotoxy(2, SUGGEST_TOP + 2);
-    cout << "Keys: Arrows Home/End | Enter split | Bksp/Del | Ctrl+H Replace | "
-            "Ctrl+C/X/V | Ctrl+E Ext";
+    cout << "Keys: Arrows move | Enter new line | Backspace/Delete | Ctrl+H Replace | "
+            "Ctrl+C/X/V copy/cut/paste | Ctrl+E typing mode";
     setColor(attrNormal());
 }
 
 void NotepadApp::refresh() {
+    clearScreen();
     drawChrome();
     doc_.render(hlRow_, hlCol_, hlLen_);
     drawSearchPane();
@@ -1264,23 +1456,23 @@ void NotepadApp::refresh() {
     if (showHelp_) {
         setColor(attrTitle());
         gotoxy(8, 6);
-        cout << "+==================== F1 HELP / RUBRIC KEYMAP ====================+";
+        cout << "+==================== HELP — KEYBOARD SHORTCUTS ==================+";
         gotoxy(8, 7);
-        cout << "| Letters A-Z only (default). Space = word separator mid-line.   |";
+        cout << "| Letters A-Z only by default. Space separates words.            |";
         gotoxy(8, 8);
-        cout << "| Enter = split / empty line. Whole-word wrap at line width.     |";
+        cout << "| Enter starts a new line. Long words wrap to the next line.     |";
         gotoxy(8, 9);
-        cout << "| Bksp/Del = delete + shift/join. Cursor stays inside text.      |";
+        cout << "| Backspace / Delete remove characters. Arrow keys move around.  |";
         gotoxy(8, 10);
-        cout << "| Ctrl+Z/Y = UNDO/REDO one WORD (stack cap 5 each direction).    |";
+        cout << "| Ctrl+Z undo last word | Ctrl+Y redo last word (up to 5).       |";
         gotoxy(8, 11);
-        cout << "| Ctrl+N New | Ctrl+O Load | Ctrl+S Save | Esc Menu | Exit save  |";
+        cout << "| Ctrl+N New | Ctrl+O Open | Ctrl+S Save | Esc opens the menu    |";
         gotoxy(8, 12);
-        cout << "| Ctrl+F Find (right pane) | F3 Next | Ctrl+H Replace (extra)    |";
+        cout << "| Ctrl+F Find | F3 Find next | Ctrl+H Replace                    |";
         gotoxy(8, 13);
-        cout << "| Ctrl+E Extended Mode = digits/punct (OFF = strict rubric).     |";
+        cout << "| Ctrl+E: allow numbers and symbols (off = letters only).        |";
         gotoxy(8, 14);
-        cout << "| Layout: ~60% text | ~20% Search right | ~20% Suggestions bottom|";
+        cout << "| Layout: text on the left, find on the right, suggestions below |";
         gotoxy(8, 15);
         cout << "+================================================================+";
         setColor(attrNormal());
@@ -1289,14 +1481,26 @@ void NotepadApp::refresh() {
 }
 
 bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
-    cout << "\n\t" << title << "\n\tName (adds .txt if missing): ";
+    clearScreen();
+    setColor(attrTitle());
+    cout << "\n\n  " << title << "\n";
+    setColor(attrDim());
+    cout << "  (Enter 0 to go back)\n\n";
+    setColor(attrPrompt());
+    cout << "  Enter file name: ";
+    setColor(attrNormal());
     cout.flush();
     FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
     char name[MAX_PATH_BUF];
     name[0] = '\0';
     cin.getline(name, MAX_PATH_BUF);
     if (!name[0]) cin.getline(name, MAX_PATH_BUF);
-    if (!name[0]) return false;
+    if (!name[0] || isCancelChoice(name)) {
+        setColor(attrWarn());
+        cout << "\n  Going back...\n";
+        setColor(attrNormal());
+        return false;
+    }
     size_t n = strlen(name);
     if (n < 4 || strcmp(name + n - 4, ".txt") != 0) {
         if (n + 4 < MAX_PATH_BUF) strcat_s(name, ".txt");
@@ -1306,7 +1510,9 @@ bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
 }
 
 void NotepadApp::readPromptLine(const char* label, char* out, int outCap) {
+    setColor(attrPrompt());
     cout << label;
+    setColor(attrNormal());
     cout.flush();
     FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
     out[0] = '\0';
@@ -1336,7 +1542,7 @@ void NotepadApp::actionNew() {
     filePath_[0] = '\0';
     dirty_ = false;
     hlLen_ = 0;
-    messageBoxInfo(L"New linked-list document ready.", L"New File");
+    messageBoxInfo(L"New document ready.", L"New File");
 }
 
 void NotepadApp::actionLoad() {
@@ -1358,19 +1564,19 @@ void NotepadApp::actionLoad() {
             // Missing file -> auto-create empty
             ofstream create(path, ios::out | ios::binary);
             if (!create) {
-                messageBoxInfo(L"Could not create missing file.", L"Load");
+                messageBoxInfo(L"Could not create that file. Check the name and try again.", L"Load");
                 return;
             }
             create.close();
             doc_.clear();
-            messageBoxInfo(L"File did not exist — created a new empty file.", L"Load");
+            messageBoxInfo(L"That file was missing, so a new empty file was created.", L"Load");
         }
     }
     strcpy_s(filePath_, path);
     history_.clear();
     dirty_ = false;
     hlLen_ = 0;
-    messageBoxInfo(L"File loaded into the 2D linked-list document.", L"Load");
+    messageBoxInfo(L"File loaded successfully.", L"Load");
 }
 
 void NotepadApp::actionSave() {
@@ -1383,12 +1589,12 @@ void NotepadApp::actionSave() {
         // auto-create path if needed
         ofstream create(filePath_, ios::out | ios::binary);
         if (!create) {
-            messageBoxInfo(L"Save failed.", L"Save");
+            messageBoxInfo(L"Could not save the file. Check the name and try again.", L"Save");
             return;
         }
         create.close();
         if (!doc_.saveToFile(filePath_)) {
-            messageBoxInfo(L"Save failed.", L"Save");
+            messageBoxInfo(L"Could not save the file. Check the name and try again.", L"Save");
             return;
         }
     }
@@ -1402,7 +1608,7 @@ void NotepadApp::actionSaveAs() {
     if (!promptFileName("Save As", path, MAX_PATH_BUF)) return;
     commitPendingWord();
     if (!doc_.saveToFile(path)) {
-        messageBoxInfo(L"Save failed.", L"Save As");
+        messageBoxInfo(L"Could not save the file. Check the name and try again.", L"Save As");
         return;
     }
     strcpy_s(filePath_, path);
@@ -1412,9 +1618,15 @@ void NotepadApp::actionSaveAs() {
 
 void NotepadApp::actionFind() {
     clearScreen();
-    cout << "\n\n\tFind (also shown in right Search pane)\n";
-    readPromptLine("\tText to find: ", findQuery_, MAX_QUERY_BUF);
-    if (!findQuery_[0]) return;
+    setColor(attrTitle());
+    cout << "\n\n  Find text\n";
+    setColor(attrDim());
+    cout << "  (Enter 0 to go back)\n\n";
+    readPromptLine("  Enter text to find: ", findQuery_, MAX_QUERY_BUF);
+    if (!findQuery_[0] || isCancelChoice(findQuery_)) {
+        findQuery_[0] = '\0';
+        return;
+    }
     actionFindNext();
 }
 
@@ -1431,19 +1643,29 @@ void NotepadApp::actionFindNext() {
         hlLen_ = static_cast<int>(strlen(findQuery_));
     } else {
         hlLen_ = 0;
-        messageBoxInfo(L"No matches found.", L"Find");
+        messageBoxInfo(L"No matches found. Try a different search.", L"Find");
     }
 }
 
 void NotepadApp::actionReplace() {
     clearScreen();
-    cout << "\n\n\tReplace (extra feature)\n";
-    readPromptLine("\tFind: ", findQuery_, MAX_QUERY_BUF);
-    readPromptLine("\tReplace with: ", replaceQuery_, MAX_QUERY_BUF);
-    if (!findQuery_[0]) return;
+    setColor(attrTitle());
+    cout << "\n\n  Replace text\n";
+    setColor(attrDim());
+    cout << "  (Enter 0 to go back)\n\n";
+    readPromptLine("  Enter text to find: ", findQuery_, MAX_QUERY_BUF);
+    if (!findQuery_[0] || isCancelChoice(findQuery_)) {
+        findQuery_[0] = '\0';
+        return;
+    }
+    readPromptLine("  Enter replacement text: ", replaceQuery_, MAX_QUERY_BUF);
+    if (isCancelChoice(replaceQuery_)) {
+        replaceQuery_[0] = '\0';
+        return;
+    }
     int r = 0, c = 0;
     if (!doc_.findNext(findQuery_, r, c, true)) {
-        messageBoxInfo(L"No matches found.", L"Replace");
+        messageBoxInfo(L"No matches found. Try a different search.", L"Replace");
         return;
     }
     doc_.setCursor(r, c);
@@ -1506,10 +1728,13 @@ void NotepadApp::actionHelp() { showHelp_ = !showHelp_; }
 void NotepadApp::actionToggleExtended() {
     extendedMode_ = !extendedMode_;
     messageBoxInfo(extendedMode_
-                       ? L"Extended Mode ON: digits and punctuation allowed.\r\n"
-                         L"Strict rubric path is ALPHA-ONLY (Ctrl+E again to disable)."
-                       : L"Extended Mode OFF: alphabetic characters only (rubric default).",
-                   L"Extended Mode");
+                       ? L"Extended typing is ON.\r\n"
+                         L"You can type letters, numbers, and symbols.\r\n"
+                         L"Press Ctrl+E again to go back to letters only."
+                       : L"Letters-only typing is ON.\r\n"
+                         L"Only letters and spaces are allowed.\r\n"
+                         L"Press Ctrl+E to allow numbers and symbols.",
+                   L"Typing Mode");
 }
 
 void NotepadApp::actionUndo() {
@@ -1539,7 +1764,7 @@ void NotepadApp::typeChar(char ch) {
         pendingCol_ = doc_.cursorCol();
     }
     if (!doc_.insertChar(ch)) {
-        messageBoxInfo(L"Writing space is full for this line/page.", L"Space Full");
+        messageBoxInfo(L"This line or page is full. No more room to type here.", L"Space Full");
         return;
     }
     appendChar(pendingWord_, ch);
@@ -1646,7 +1871,7 @@ void NotepadApp::doDelete() {
 void NotepadApp::doEnter() {
     commitPendingWord();
     if (!doc_.insertNewline()) {
-        messageBoxInfo(L"Maximum rows reached.", L"Space Full");
+        messageBoxInfo(L"No more room for new lines.", L"Space Full");
         return;
     }
     dirty_ = true;
@@ -1765,35 +1990,104 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
     if (ch >= 32 && ch <= 126) typeChar(ch);
 }
 
+bool NotepadApp::showWelcomeScreen() {
+    for (;;) {
+        clearScreen();
+        setColor(attrOk());
+        cout << "\n\n";
+        cout << "  =====================================================================\n";
+        cout << "  ||                                                                 ||\n";
+        cout << "  ||                    NOTEPAD APPLICATION                          ||\n";
+        cout << "  ||                                                                 ||\n";
+        cout << "  ||           Interactive Console Editor With Search                ||\n";
+        cout << "  ||           Author: Mohammad Rohaan - 22I-2327                    ||\n";
+        cout << "  ||                                                                 ||\n";
+        cout << "  =====================================================================\n\n";
+        setColor(attrTitle());
+        cout << "   WELCOME\n\n";
+        setColor(attrNormal());
+        cout << "     1  = Start notepad\n";
+        cout << "     0  = Exit\n\n";
+        setColor(attrPrompt());
+        cout << "  Enter your choice: ";
+        setColor(attrNormal());
+
+        char tok[64];
+        tok[0] = '\0';
+        if (!(cin >> tok)) {
+            if (cin.eof())
+                return false;
+            cin.clear();
+            cin.ignore(10000, '\n');
+            continue;
+        }
+        cin.ignore(10000, '\n');
+
+        if (isCancelChoice(tok)) {
+            clearScreen();
+            setColor(attrOk());
+            cout << "\n  Goodbye. Thank you for using Notepad.\n\n";
+            setColor(attrNormal());
+            running_ = false;
+            return false;
+        }
+        if (tok[0] == '1' && tok[1] == '\0')
+            return true;
+
+        setColor(attrError());
+        cout << "\n  That option is not on the list. Type 1 to start or 0 to exit.\n";
+        setColor(attrNormal());
+        Sleep(900);
+        clearScreen();  // wipe error before redrawing welcome only
+    }
+}
+
 void NotepadApp::showMainMenu() {
     while (running_) {
         clearScreen();
         setColor(attrTitle());
-        cout << "\n\n\n";
-        cout << "\t\t========================================================\n";
-        cout << "\t\t   NOTEPAD  --  MAIN MENU (CS218 Assignment 02)\n";
-        cout << "\t\t   Document = 2D Node grid | Undo/Redo = WORD stacks\n";
-        cout << "\t\t========================================================\n\n";
+        cout << "\n\n";
+        cout << "  =====================================================================\n";
+        cout << "  ||                     NOTEPAD — MAIN MENU                         ||\n";
+        cout << "  =====================================================================\n\n";
         setColor(attrNormal());
-        cout << "\t\t  1. New File\n";
-        cout << "\t\t  2. Load File  (missing file is auto-created)\n";
-        cout << "\t\t  3. Save File\n";
-        cout << "\t\t  4. Exit (prompt to save)\n";
-        cout << "\t\t  --------------------------------------------------\n";
-        cout << "\t\t  5. Continue Editing\n";
-        cout << "\t\t  6. Save As (extra)\n";
-        cout << "\t\t  7. Help / Keymap + Rubric mapping (extra)\n\n";
-        cout << "\t\t  Choice: ";
-        int choice = 0;
-        if (!(cin >> choice)) {
+        cout << "     1.  New File\n";
+        cout << "     2.  Load File\n";
+        cout << "     3.  Save File\n";
+        cout << "     4.  Exit program\n";
+        cout << "  ---------------------------------------------------------------------\n";
+        cout << "     5.  Continue Editing\n";
+        cout << "     6.  Save As\n";
+        cout << "     7.  Help\n";
+        cout << "     0.  Back to Welcome\n\n";
+        setColor(attrPrompt());
+        cout << "  Enter your choice: ";
+        setColor(attrNormal());
+
+        char tok[64];
+        tok[0] = '\0';
+        if (!(cin >> tok)) {
+            if (cin.eof()) {
+                running_ = false;
+                return;
+            }
             cin.clear();
-            char junk[128];
-            cin.getline(junk, 128);
+            cin.ignore(10000, '\n');
+            setColor(attrError());
+            cout << "\n  Please choose a number from the list of options.\n";
+            setColor(attrNormal());
+            Sleep(800);
             continue;
         }
-        char junk[128];
-        cin.getline(junk, 128);
+        cin.ignore(10000, '\n');
 
+        if (isCancelChoice(tok)) {
+            if (!showWelcomeScreen())
+                return;
+            continue;
+        }
+
+        int choice = atoi(tok);
         switch (choice) {
         case 1:
             actionNew();
@@ -1817,26 +2111,32 @@ void NotepadApp::showMainMenu() {
             break;
         case 7:
             messageBoxInfo(
-                L"DEFAULT (rubric): A-Z/a-z only; Space separates words; no trailing spaces;\r\n"
-                L"whole-word wrap; Enter splits; Bksp/Del shift/join;\r\n"
-                L"Ctrl+Z/Y undo/redo ONE WORD (stack of 5);\r\n"
-                L"Menu: New / Load / Save / Exit.\r\n"
-                L"Layout: 60% text, 20% Search (right), 20% Suggestions (bottom).\r\n"
-                L"EXTRAS: F1 Help, Ctrl+F/F3 Find, Ctrl+H Replace, Ctrl+E Extended Mode,\r\n"
-                L"status bar, Save As, clipboard.",
-                L"Help / Rubric");
+                L"Typing: letters only by default. Space separates words.\r\n"
+                L"Enter starts a new line. Backspace and Delete remove text.\r\n"
+                L"Ctrl+Z undoes the last word; Ctrl+Y redoes it (up to 5).\r\n"
+                L"Menu: New / Open / Save / Exit. Esc opens the menu. 0 goes back.\r\n"
+                L"F1 Help, Ctrl+F Find, F3 Find next, Ctrl+H Replace.\r\n"
+                L"Ctrl+E allows numbers and symbols. Ctrl+C / X / V for copy/cut/paste.",
+                L"Help");
             break;
         default:
-            messageBoxInfo(L"Invalid choice.", L"Menu");
+            setColor(attrError());
+            cout << "\n  That option is not on the list. Choose 1-7, or 0 to go back.\n";
+            setColor(attrNormal());
+            Sleep(900);
+            clearScreen();  // wipe error; loop redraws main menu only
             break;
         }
     }
 }
 
 int NotepadApp::run() {
-    setConsoleTitleBar(L"Notepad -- 2D Linked List | Word Undo/Redo Stacks");
-    maximizeConsole();
+    setConsoleTitleBar(L"Notepad Application — Interactive Editor");
+    setupConsoleDisplay();
     doc_.clear();
+
+    if (!showWelcomeScreen())
+        return 0;
 
     showMainMenu();
     if (!running_) return 0;
