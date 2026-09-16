@@ -1190,16 +1190,15 @@ void NotepadApp::setupConsoleDisplay() {
     if (pxW < 640) pxW = 640;
     if (pxH < 400) pxH = 400;
 
-    // Slightly fewer logical rows => larger glyphs that still fit the work area.
+    // Screen-zoom style: size glyphs so SCREEN_ROWS fills the work area
+    // (like zooming the display — fewer cells, much larger text).
     const int layoutRows = SCREEN_ROWS;
     SHORT fontY = static_cast<SHORT>(pxH / layoutRows);
-    // A bit larger than before; still scales with window height.
-    if (fontY > 40) fontY = 40;
-    if (fontY < 24) fontY = 24;
+    if (fontY > 64) fontY = 64;
+    if (fontY < 32) fontY = 32;
 
-    // If this font would clip a half-row at the bottom, bump size down one step
-    // until every visible row is fully on-screen (no leftover pixels of next text).
-    while (fontY > 18 && (fontY * layoutRows) > pxH) {
+    // Back off only if a half-row would clip at the bottom.
+    while (fontY > 28 && (fontY * layoutRows) > (pxH - 8)) {
         --fontY;
     }
 
@@ -1207,7 +1206,10 @@ void NotepadApp::setupConsoleDisplay() {
     ZeroMemory(&cfi, sizeof(cfi));
     cfi.cbSize = sizeof(cfi);
     GetCurrentConsoleFontEx(hOut, FALSE, &cfi);
-    cfi.dwFontSize.X = 0;
+    // Wider cells to match the tall glyphs (zoom feel, not skinny tall letters).
+    SHORT fontX = static_cast<SHORT>(fontY / 2);
+    if (fontX < 16) fontX = 16;
+    cfi.dwFontSize.X = fontX;
     cfi.dwFontSize.Y = fontY;
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(hOut, FALSE, &cfi);
@@ -1323,13 +1325,8 @@ bool NotepadApp::isAllowedChar(char ch) const {
 }
 
 void NotepadApp::drawChrome() const {
-    setColor(attrTitle());
-    gotoxy(0, 0);
-    cout << "+-- NOTEPAD APPLICATION -- Interactive Editor "
-            "-------------------------------------------+\n";
-    setColor(attrDim());
-    cout << "| Esc=Menu | 0/Esc Back | F1 Help | Ctrl+N/O/S | Ctrl+Z/Y Undo/Redo | "
-            "Ctrl+F Search | F3 Next |\n";
+    writePaddedRow(0, attrTitle(), "+-- NOTEPAD — Zoomed Editor --+");
+    writePaddedRow(1, attrDim(), "| Esc=Menu | F1 Help | Ctrl+N/O/S | Ctrl+Z/Y | Ctrl+F | F3 |");
 
     // Text pane left border + Search right pane borders
     for (int y = TEXT_TOP; y < TEXT_TOP + TEXT_ROWS; ++y) {
@@ -1351,10 +1348,7 @@ void NotepadApp::drawChrome() const {
 
     // Suggestions frame
     setColor(attrSuggest());
-    gotoxy(0, SUGGEST_TOP - 1);
-    cout << "| Word suggestions ";
-    for (int i = 0; i < 70; ++i) cout << ' ';
-    cout << '|';
+    writePaddedRow(SUGGEST_TOP - 1, attrSuggest(), "| Word suggestions");
     for (int y = SUGGEST_TOP; y < SUGGEST_TOP + SUGGEST_ROWS - 1; ++y) {
         gotoxy(0, y);
         cout << '|';
@@ -1472,26 +1466,22 @@ void NotepadApp::refresh() {
     drawStatus();
     if (showHelp_) {
         setColor(attrTitle());
-        gotoxy(8, 6);
-        cout << "+==================== HELP — KEYBOARD SHORTCUTS ==================+";
-        gotoxy(8, 7);
-        cout << "| Letters A-Z only by default. Space separates words.            |";
-        gotoxy(8, 8);
-        cout << "| Enter starts a new line. Long words wrap to the next line.     |";
-        gotoxy(8, 9);
-        cout << "| Backspace / Delete remove characters. Arrow keys move around.  |";
-        gotoxy(8, 10);
-        cout << "| Ctrl+Z undo last word | Ctrl+Y redo last word (up to 5).       |";
-        gotoxy(8, 11);
-        cout << "| Ctrl+N New | Ctrl+O Open | Ctrl+S Save | Esc opens the menu    |";
-        gotoxy(8, 12);
-        cout << "| Ctrl+F Find | F3 Find next | Ctrl+H Replace                    |";
-        gotoxy(8, 13);
-        cout << "| Ctrl+E: allow numbers and symbols (off = letters only).        |";
-        gotoxy(8, 14);
-        cout << "| Layout: text on the left, find on the right, suggestions below |";
-        gotoxy(8, 15);
-        cout << "+================================================================+";
+        gotoxy(4, 4);
+        cout << "+======== HELP / SHORTCUTS ========+";
+        gotoxy(4, 5);
+        cout << "| Letters only by default          |";
+        gotoxy(4, 6);
+        cout << "| Enter = new line | Arrows move   |";
+        gotoxy(4, 7);
+        cout << "| Ctrl+Z/Y = undo/redo last word   |";
+        gotoxy(4, 8);
+        cout << "| Ctrl+N/O/S = New/Open/Save       |";
+        gotoxy(4, 9);
+        cout << "| Ctrl+F Find | F3 next | Esc menu |";
+        gotoxy(4, 10);
+        cout << "| Ctrl+E = numbers and symbols     |";
+        gotoxy(4, 11);
+        cout << "+==================================+";
         setColor(attrNormal());
     }
 
