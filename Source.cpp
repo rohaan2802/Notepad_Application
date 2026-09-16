@@ -1223,6 +1223,52 @@ void NotepadApp::writePaddedRow(int y, WORD attr, const char* text) const {
     cout.flush();
 }
 
+
+void NotepadApp::setCookedInput() const {
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD inMode = 0;
+    if (GetConsoleMode(hIn, &inMode)) {
+        inMode |= ENABLE_EXTENDED_FLAGS;
+        inMode |= ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT;
+        inMode &= ~ENABLE_QUICK_EDIT_MODE;
+        SetConsoleMode(hIn, inMode);
+    }
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD outMode = 0;
+    if (GetConsoleMode(hOut, &outMode)) {
+        outMode |= ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT;
+        SetConsoleMode(hOut, outMode);
+    }
+    // Make sure the cursor is visible for typing a choice.
+    CONSOLE_CURSOR_INFO ci;
+    if (GetConsoleCursorInfo(hOut, &ci)) {
+        ci.bVisible = TRUE;
+        if (ci.dwSize < 1) ci.dwSize = 25;
+        SetConsoleCursorInfo(hOut, &ci);
+    }
+}
+
+void NotepadApp::setRawEditorInput() const {
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD inMode = 0;
+    if (GetConsoleMode(hIn, &inMode)) {
+        inMode |= ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT;
+        inMode &= ~ENABLE_QUICK_EDIT_MODE;
+        inMode &= ~ENABLE_PROCESSED_INPUT; // Ctrl+C as a key for copy
+        inMode &= ~ENABLE_LINE_INPUT;
+        inMode &= ~ENABLE_ECHO_INPUT;
+        SetConsoleMode(hIn, inMode);
+    }
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD outMode = 0;
+    if (GetConsoleMode(hOut, &outMode)) {
+        outMode |= ENABLE_PROCESSED_OUTPUT;
+        outMode &= ~ENABLE_WRAP_AT_EOL_OUTPUT; // fixed panes
+        SetConsoleMode(hOut, outMode);
+    }
+    FlushConsoleInputBuffer(hIn);
+}
+
 void NotepadApp::setupConsoleDisplay() {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut == INVALID_HANDLE_VALUE || hOut == NULL)
@@ -1587,7 +1633,8 @@ if (showHelp_) {
 }
 
 bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
-    clearScreen();
+    setCookedInput();
+    clearScreen(true);
     setColor(attrTitle());
     cout << "\n\n  " << title << "\n";
     setColor(attrDim());
@@ -1616,6 +1663,7 @@ bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
 }
 
 void NotepadApp::readPromptLine(const char* label, char* out, int outCap) {
+    setCookedInput();
     setColor(attrPrompt());
     cout << label;
     setColor(attrNormal());
@@ -2123,16 +2171,19 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
         case 'N':
             actionNew();
             clearScreen(true);
+            setRawEditorInput();
             refresh();
             return;
         case 'O':
             actionLoad();
             clearScreen(true);
+            setRawEditorInput();
             refresh();
             return;
         case 'S':
             actionSave();
             clearScreen(true);
+            setRawEditorInput();
             refresh();
             return;
         case 'Z':
@@ -2144,11 +2195,13 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
         case 'F':
             actionFind();
             clearScreen(true);
+            setRawEditorInput();
             refresh();
             return;
         case 'H':
             actionReplace();
             clearScreen(true);
+            setRawEditorInput();
             refresh();
             return;
         case 'C':
@@ -2194,6 +2247,7 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
         showMainMenu();
         if (running_) {
             clearScreen(true);
+            setRawEditorInput();
             refresh();
         }
         return;
@@ -2260,7 +2314,8 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
 
 bool NotepadApp::showWelcomeScreen() {
     for (;;) {
-        clearScreen();
+        setCookedInput();
+        clearScreen(true);
         setColor(attrOk());
         cout << "\n\n";
         cout << "  =====================================================================\n";
@@ -2279,17 +2334,24 @@ bool NotepadApp::showWelcomeScreen() {
         setColor(attrPrompt());
         cout << "  Enter your choice: ";
         setColor(attrNormal());
+        cout.flush();
+        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
 
         char tok[64];
         tok[0] = '\0';
-        if (!(cin >> tok)) {
+        cin.clear();
+        if (!cin.getline(tok, 64)) {
             if (cin.eof())
                 return false;
             cin.clear();
-            cin.ignore(10000, '\n');
             continue;
         }
-        cin.ignore(10000, '\n');
+        // trim leading spaces
+        char* p = tok;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (p != tok) {
+            memmove(tok, p, strlen(p) + 1);
+        }
 
         if (isCancelChoice(tok)) {
             clearScreen();
@@ -2312,7 +2374,8 @@ bool NotepadApp::showWelcomeScreen() {
 
 void NotepadApp::showMainMenu() {
     while (running_) {
-        clearScreen();
+        setCookedInput();
+        clearScreen(true);
         setColor(attrTitle());
         cout << "\n\n";
         cout << "  =====================================================================\n";
@@ -2331,23 +2394,34 @@ void NotepadApp::showMainMenu() {
         setColor(attrPrompt());
         cout << "  Enter your choice: ";
         setColor(attrNormal());
+        cout.flush();
+        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
 
         char tok[64];
         tok[0] = '\0';
-        if (!(cin >> tok)) {
+        cin.clear();
+        if (!cin.getline(tok, 64)) {
             if (cin.eof()) {
                 running_ = false;
                 return;
             }
             cin.clear();
-            cin.ignore(10000, '\n');
             setColor(attrError());
             cout << "\n  Please choose a number from the list of options.\n";
             setColor(attrNormal());
             Sleep(800);
             continue;
         }
-        cin.ignore(10000, '\n');
+        char* p = tok;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (p != tok) memmove(tok, p, strlen(p) + 1);
+        if (!tok[0]) {
+            setColor(attrError());
+            cout << "\n  Please choose a number from the list of options.\n";
+            setColor(attrNormal());
+            Sleep(800);
+            continue;
+        }
 
         if (isCancelChoice(tok)) {
             if (!showWelcomeScreen())
@@ -2409,7 +2483,8 @@ int NotepadApp::run() {
     showMainMenu();
     if (!running_) return 0;
 
-    clearScreen();
+    clearScreen(true);
+    setRawEditorInput();
     refresh();
 
     HANDLE rhnd = GetStdHandle(STD_INPUT_HANDLE);
