@@ -13,25 +13,25 @@
 #include <cstdlib>
 
 // ---------------------------------------------------------------------------
-// Fixed console layout (~60% text / ~20% right Search / ~20% bottom Suggestions)
-// Total roughly 120 cols x 40 rows. Frames are fixed (non-scrollable).
+// Zoomed console layout (~60% text / ~20% Search / ~20% Suggestions).
+// Fewer rows/cols than a dense 120x40 grid so glyphs look screen-zoom large.
 // ---------------------------------------------------------------------------
-const int SCREEN_COLS = 120;
-const int SCREEN_ROWS = 40;
+const int SCREEN_COLS = 90;
+const int SCREEN_ROWS = 24;
 
 const int TEXT_LEFT = 1;
 const int TEXT_TOP = 2;
-const int TEXT_COLS = 72;   // ~60% of width
-const int TEXT_ROWS = 22;   // ~55-60% of height
+const int TEXT_COLS = 54;   // ~60% of width
+const int TEXT_ROWS = 13;   // ~55% of height
 
-const int SEARCH_LEFT = 76;
+const int SEARCH_LEFT = 57;
 const int SEARCH_TOP = 2;
-const int SEARCH_COLS = 42; // ~20%+ right pane
-const int SEARCH_ROWS = 22;
+const int SEARCH_COLS = 31; // ~20%+ right pane
+const int SEARCH_ROWS = 13;
 
-const int SUGGEST_TOP = 26;
-const int SUGGEST_ROWS = 8; // ~20% bottom
-const int STATUS_ROW = 35;
+const int SUGGEST_TOP = 16;
+const int SUGGEST_ROWS = 5; // ~20% bottom
+const int STATUS_ROW = 22;
 
 const int MAX_SUGGESTIONS = 8;
 const int WORD_STACK_CAP = 5;
