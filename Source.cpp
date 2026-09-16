@@ -1241,6 +1241,124 @@ void NotepadApp::maximizeConsole() {
     ensureScrollableBuffer();
 }
 
+
+void NotepadApp::scrollViewportBy(int rowDelta, int colDelta) const {
+    if (rowDelta == 0 && colDelta == 0) return;
+    ensureScrollableBuffer();
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (!GetConsoleScreenBufferInfo(hOut, &csbi))
+        return;
+
+    SHORT winCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+    SHORT winRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+    int left = csbi.srWindow.Left + colDelta;
+    int top = csbi.srWindow.Top + rowDelta;
+
+    int maxLeft = csbi.dwSize.X - winCols;
+    int maxTop = csbi.dwSize.Y - winRows;
+    if (maxLeft < 0) maxLeft = 0;
+    if (maxTop < 0) maxTop = 0;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (left > maxLeft) left = maxLeft;
+    if (top > maxTop) top = maxTop;
+
+    SMALL_RECT win = {
+        static_cast<SHORT>(left),
+        static_cast<SHORT>(top),
+        static_cast<SHORT>(left + winCols - 1),
+        static_cast<SHORT>(top + winRows - 1)
+    };
+    SetConsoleWindowInfo(hOut, TRUE, &win);
+}
+
+bool NotepadApp::handleMouseWheel(const MOUSE_EVENT_RECORD& mouse) const {
+    // Two-finger trackpad scroll arrives as MOUSE_WHEELED / MOUSE_HWHEELED.
+    if (mouse.dwEventFlags & MOUSE_WHEELED) {
+        const SHORT delta = static_cast<SHORT>((mouse.dwButtonState >> 16) & 0xFFFF);
+        // Positive delta = scroll up (content down / view toward buffer top).
+        int steps = static_cast<int>(delta) / WHEEL_DELTA;
+        if (steps == 0) steps = (delta > 0) ? 1 : -1;
+        // Match typical Windows apps: one notch moves a few lines.
+        scrollViewportBy(-steps * 3, 0);
+        return true;
+    }
+    if (mouse.dwEventFlags & MOUSE_HWHEELED) {
+        const SHORT delta = static_cast<SHORT>((mouse.dwButtonState >> 16) & 0xFFFF);
+        int steps = static_cast<int>(delta) / WHEEL_DELTA;
+        if (steps == 0) steps = (delta > 0) ? 1 : -1;
+        scrollViewportBy(0, -steps * 3);
+        return true;
+    }
+    return false;
+}
+
+bool NotepadApp::readLineInteractive(char* out, int outCap) {
+    if (!out || outCap <= 0) return false;
+    out[0] = '\0';
+    setCookedInput();
+    ensureScrollableBuffer();
+    FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    int len = 0;
+    cout.flush();
+
+    for (;;) {
+        INPUT_RECORD rec;
+        DWORD n = 0;
+        if (!ReadConsoleInput(hIn, &rec, 1, &n) || n == 0) continue;
+
+        if (rec.EventType == WINDOW_BUFFER_SIZE_EVENT) {
+            ensureScrollableBuffer();
+            continue;
+        }
+        if (rec.EventType == MOUSE_EVENT) {
+            handleMouseWheel(rec.Event.MouseEvent);
+            continue;
+        }
+        if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown)
+            continue;
+
+        const KEY_EVENT_RECORD& key = rec.Event.KeyEvent;
+        const WORD vk = key.wVirtualKeyCode;
+        char ch = key.uChar.AsciiChar;
+
+        if (vk == VK_RETURN) {
+            cout << "\n";
+            cout.flush();
+            out[len] = '\0';
+            return true;
+        }
+        if (vk == VK_ESCAPE) {
+            out[0] = '0';
+            out[1] = '\0';
+            cout << "\n";
+            cout.flush();
+            return true;
+        }
+        if (vk == VK_BACK) {
+            if (len > 0) {
+                --len;
+                out[len] = '\0';
+                // erase last echoed character
+                cout << "\b \b";
+                cout.flush();
+            }
+            continue;
+        }
+        if (ch >= 32 && ch <= 126) {
+            if (len + 1 < outCap) {
+                out[len++] = ch;
+                out[len] = '\0';
+                cout << ch;
+                cout.flush();
+            }
+        }
+    }
+}
+
 void NotepadApp::pinViewportTop() const {
     // Soft scroll-to-top only. Never resize window to the full buffer.
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -1287,8 +1405,12 @@ void NotepadApp::setCookedInput() const {
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     DWORD inMode = 0;
     if (GetConsoleMode(hIn, &inMode)) {
-        inMode |= ENABLE_EXTENDED_FLAGS;
-        inMode |= ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT;
+        inMode |= ENABLE_EXTENDED_FLAGS | ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT;
+        // No LINE_INPUT/ECHO — we echo ourselves in readLineInteractive so wheel
+        // events can be handled (trackpad two-finger scroll) while typing.
+        inMode |= ENABLE_PROCESSED_INPUT;
+        inMode &= ~ENABLE_LINE_INPUT;
+        inMode &= ~ENABLE_ECHO_INPUT;
         inMode &= ~ENABLE_QUICK_EDIT_MODE;
         SetConsoleMode(hIn, inMode);
     }
@@ -1664,8 +1786,7 @@ bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
     FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
     char name[MAX_PATH_BUF];
     name[0] = '\0';
-    cin.getline(name, MAX_PATH_BUF);
-    if (!name[0]) cin.getline(name, MAX_PATH_BUF);
+    readLineInteractive(name, MAX_PATH_BUF);
     if (!name[0] || isCancelChoice(name)) {
         setColor(attrWarn());
         cout << "\n  Going back...\n";
@@ -1681,15 +1802,11 @@ bool NotepadApp::promptFileName(const char* title, char* out, int outCap) {
 }
 
 void NotepadApp::readPromptLine(const char* label, char* out, int outCap) {
-    setCookedInput();
     setColor(attrPrompt());
     cout << label;
     setColor(attrNormal());
     cout.flush();
-    FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
-    out[0] = '\0';
-    cin.getline(out, outCap);
-    if (!out[0]) cin.getline(out, outCap);
+    readLineInteractive(out, outCap);
 }
 
 bool NotepadApp::confirmDiscard() {
@@ -2354,23 +2471,14 @@ bool NotepadApp::showWelcomeScreen() {
         cout << "  Enter your choice: ";
         setColor(attrNormal());
         cout.flush();
-        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
 
         char tok[64];
         tok[0] = '\0';
-        cin.clear();
-        if (!cin.getline(tok, 64)) {
-            if (cin.eof())
-                return false;
-            cin.clear();
-            continue;
-        }
-        // trim leading spaces
+        if (!readLineInteractive(tok, 64))
+            return false;
         char* p = tok;
         while (*p == ' ' || *p == '\t') ++p;
-        if (p != tok) {
-            memmove(tok, p, strlen(p) + 1);
-        }
+        if (p != tok) memmove(tok, p, strlen(p) + 1);
 
         if (isCancelChoice(tok)) {
             clearScreen();
@@ -2415,22 +2523,12 @@ void NotepadApp::showMainMenu() {
         cout << "  Enter your choice: ";
         setColor(attrNormal());
         cout.flush();
-        FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
 
         char tok[64];
         tok[0] = '\0';
-        cin.clear();
-        if (!cin.getline(tok, 64)) {
-            if (cin.eof()) {
-                running_ = false;
-                return;
-            }
-            cin.clear();
-            setColor(attrError());
-            cout << "\n  Please choose a number from the list of options.\n";
-            setColor(attrNormal());
-            Sleep(800);
-            continue;
+        if (!readLineInteractive(tok, 64)) {
+            running_ = false;
+            return;
         }
         char* p = tok;
         while (*p == ' ' || *p == '\t') ++p;
@@ -2523,6 +2621,14 @@ int NotepadApp::run() {
             if (buffer[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
                 ensureScrollableBuffer();
                 refresh();
+                continue;
+            }
+            if (buffer[i].EventType == MOUSE_EVENT) {
+                // Two-finger trackpad / mouse wheel scroll (like other Windows apps).
+                if (handleMouseWheel(buffer[i].Event.MouseEvent)) {
+                    // Keep editor chrome aligned after scroll.
+                    // Do not full-refresh every wheel tick if possible — still OK.
+                }
                 continue;
             }
             if (buffer[i].EventType == KEY_EVENT && buffer[i].Event.KeyEvent.bKeyDown) {

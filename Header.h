@@ -242,6 +242,9 @@ private:
     void setRawEditorInput() const; // ReadConsoleInput editor loop
     void pinViewportTop() const;
     void ensureScrollableBuffer() const; // buffer always larger than window
+    void scrollViewportBy(int rowDelta, int colDelta) const; // trackpad/mouse wheel
+    bool handleMouseWheel(const MOUSE_EVENT_RECORD& mouse) const;
+    bool readLineInteractive(char* out, int outCap); // line input + wheel scroll
     void writePaddedRow(int y, WORD attr, const char* text) const;
     void gotoxy(int x, int y) const;
     void clearScreen(bool resetScroll = true) const;
