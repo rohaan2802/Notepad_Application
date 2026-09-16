@@ -1176,6 +1176,58 @@ NotepadApp::~NotepadApp() {
     // doc_ and history_ destructors free their nodes
 }
 
+void NotepadApp::ensureScrollableBuffer() const {
+    // Windows often shrinks the buffer to the window on maximize/resize, which
+    // locks/hides the scrollbar. Always keep the buffer larger than the window.
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (!GetConsoleScreenBufferInfo(hOut, &csbi))
+        return;
+
+    SHORT winCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+    SHORT winRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+    if (winCols < 40) winCols = 40;
+    if (winRows < 10) winRows = 10;
+
+    // Extra space so vertical + horizontal scrollbars stay available and unlocked.
+    SHORT needCols = static_cast<SHORT>(winCols + 80);
+    SHORT needRows = static_cast<SHORT>(winRows + 600);
+    if (needCols < SCREEN_COLS + 80) needCols = static_cast<SHORT>(SCREEN_COLS + 80);
+    if (needRows < SCREEN_ROWS + 600) needRows = static_cast<SHORT>(SCREEN_ROWS + 600);
+
+    if (csbi.dwSize.X < needCols || csbi.dwSize.Y < needRows) {
+        COORD bigger = { needCols, needRows };
+        SetConsoleScreenBufferSize(hOut, bigger);
+    }
+
+    // Re-assert the visible window size does NOT cover the whole buffer.
+    if (!GetConsoleScreenBufferInfo(hOut, &csbi))
+        return;
+    SHORT maxWinCols = static_cast<SHORT>(csbi.dwSize.X - 1);
+    SHORT maxWinRows = static_cast<SHORT>(csbi.dwSize.Y - 1);
+    SHORT keepCols = winCols;
+    SHORT keepRows = winRows;
+    if (keepCols > maxWinCols) keepCols = maxWinCols;
+    if (keepRows > maxWinRows) keepRows = maxWinRows;
+    // Leave at least ~50 buffer rows below the window so scrollbar can move.
+    if (csbi.dwSize.Y - keepRows < 50) {
+        keepRows = static_cast<SHORT>(csbi.dwSize.Y - 50);
+        if (keepRows < 10) keepRows = 10;
+    }
+    SHORT left = csbi.srWindow.Left;
+    SHORT top = csbi.srWindow.Top;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (left + keepCols >= csbi.dwSize.X)
+        left = static_cast<SHORT>(csbi.dwSize.X - keepCols);
+    if (top + keepRows >= csbi.dwSize.Y)
+        top = static_cast<SHORT>(csbi.dwSize.Y - keepRows);
+    SMALL_RECT win = { left, top,
+                       static_cast<SHORT>(left + keepCols - 1),
+                       static_cast<SHORT>(top + keepRows - 1) };
+    SetConsoleWindowInfo(hOut, TRUE, &win);
+}
+
 void NotepadApp::maximizeConsole() {
     HWND w = GetConsoleWindow();
     if (!w)
@@ -1184,21 +1236,28 @@ void NotepadApp::maximizeConsole() {
     ShowWindow(w, SW_SHOW);
     ShowWindow(w, SW_MAXIMIZE);
     SetForegroundWindow(w);
+    Sleep(30);
+    // Maximize often equals buffer to window — unlock scrollbar again.
+    ensureScrollableBuffer();
 }
 
 void NotepadApp::pinViewportTop() const {
+    // Soft scroll-to-top only. Never resize window to the full buffer.
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     if (!GetConsoleScreenBufferInfo(hOut, &csbi))
         return;
-    // Keep the current window size — only scroll to the top.
-    // Do NOT expand the window to the full buffer (that locks/hides the scrollbar).
+    ensureScrollableBuffer();
+    if (!GetConsoleScreenBufferInfo(hOut, &csbi))
+        return;
     SHORT winW = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left);
     SHORT winH = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top);
     if (winW < 1) winW = 1;
     if (winH < 1) winH = 1;
-    if (winW >= csbi.dwSize.X) winW = static_cast<SHORT>(csbi.dwSize.X - 1);
-    if (winH >= csbi.dwSize.Y) winH = static_cast<SHORT>(csbi.dwSize.Y - 1);
+    if (winW >= csbi.dwSize.X - 1) winW = static_cast<SHORT>(csbi.dwSize.X - 2);
+    if (winH >= csbi.dwSize.Y - 1) winH = static_cast<SHORT>(csbi.dwSize.Y - 2);
+    if (winW < 1) winW = 1;
+    if (winH < 1) winH = 1;
     SMALL_RECT vis = { 0, 0, winW, winH };
     SetConsoleWindowInfo(hOut, TRUE, &vis);
     SetConsoleCursorPosition(hOut, makeCoord(0, 0));
@@ -1325,62 +1384,20 @@ void NotepadApp::setupConsoleDisplay() {
     wcscpy_s(cfi.FaceName, L"Consolas");
     SetCurrentConsoleFontEx(hOut, FALSE, &cfi);
 
+    // Start with a layout-sized window, then unlock a large scroll buffer.
     SMALL_RECT tiny = { 0, 0, 1, 1 };
     SetConsoleWindowInfo(hOut, TRUE, &tiny);
-
-    COORD starter = { static_cast<SHORT>(SCREEN_COLS), static_cast<SHORT>(SCREEN_ROWS) };
+    COORD starter = { static_cast<SHORT>(SCREEN_COLS + 80),
+                      static_cast<SHORT>(SCREEN_ROWS + 600) };
     SetConsoleScreenBufferSize(hOut, starter);
     SMALL_RECT starterWin = { 0, 0, static_cast<SHORT>(SCREEN_COLS - 1),
                               static_cast<SHORT>(SCREEN_ROWS - 1) };
     SetConsoleWindowInfo(hOut, TRUE, &starterWin);
 
-    maximizeConsole();
+    maximizeConsole(); // also calls ensureScrollableBuffer()
     Sleep(40);
-
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    SHORT cols = static_cast<SHORT>(SCREEN_COLS);
-    SHORT rows = static_cast<SHORT>(SCREEN_ROWS);
-    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
-        SHORT visCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
-        SHORT visRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
-        if (visCols > cols) cols = visCols;
-        if (visRows > rows) rows = visRows;
-    }
-    if (cols < SCREEN_COLS) cols = static_cast<SHORT>(SCREEN_COLS);
-    if (rows < SCREEN_ROWS) rows = static_cast<SHORT>(SCREEN_ROWS);
-
-    // Tall buffer => real scrollbar that is NOT locked. Window shows the layout area.
-    // Clears wipe the whole buffer so scrolling never shows ghost text.
-    SHORT bufCols = static_cast<SHORT>(SCREEN_COLS + 40);
-    SHORT bufRows = static_cast<SHORT>(SCREEN_ROWS + 400);
-    if (bufCols < cols) bufCols = cols;
-    if (bufRows < rows + 50) bufRows = static_cast<SHORT>(rows + 50);
-
-    SetConsoleWindowInfo(hOut, TRUE, &tiny);
-    COORD buf = { bufCols, bufRows };
-    SetConsoleScreenBufferSize(hOut, buf);
-
-    SHORT winCols = static_cast<SHORT>(SCREEN_COLS);
-    SHORT winRows = static_cast<SHORT>(SCREEN_ROWS);
-    if (winCols > bufCols) winCols = bufCols;
-    if (winRows > bufRows - 1) winRows = static_cast<SHORT>(bufRows - 1);
-    if (winCols < 40) winCols = 40;
-    if (winRows < 20) winRows = 20;
-    SMALL_RECT win = { 0, 0, static_cast<SHORT>(winCols - 1),
-                       static_cast<SHORT>(winRows - 1) };
-    SetConsoleWindowInfo(hOut, TRUE, &win);
-
-    maximizeConsole();
-    Sleep(40);
-    // Do not keep forcing the viewport on every paint — that locks the scrollbar.
-
-    // Blank the reserved last buffer row so clipped "next line" pixels never show.
-    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
-        DWORD written = 0;
-        COORD bottom = { 0, static_cast<SHORT>(csbi.dwSize.Y - 1) };
-        FillConsoleOutputCharacterA(hOut, ' ', static_cast<DWORD>(csbi.dwSize.X), bottom, &written);
-        FillConsoleOutputAttribute(hOut, attrNormal(), static_cast<DWORD>(csbi.dwSize.X), bottom, &written);
-    }
+    ensureScrollableBuffer();
+    ensureScrollableBuffer(); // second pass after Windows finishes maximize layout
 
     setColor(attrNormal());
 }
@@ -1392,16 +1409,15 @@ void NotepadApp::gotoxy(int x, int y) const {
 
 void NotepadApp::clearScreen(bool resetScroll) const {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    ensureScrollableBuffer();
     CONSOLE_SCREEN_BUFFER_INFO csbi;
-    if (resetScroll) pinViewportTop();
     if (!GetConsoleScreenBufferInfo(hOut, &csbi)) {
         system("cls");
-        if (resetScroll) pinViewportTop();
+        ensureScrollableBuffer();
         return;
     }
 
-    // Wipe the ENTIRE buffer (including scrollback). Never shrink buffer to the
-    // window — that locks the scrollbar. Ghosts are prevented by filling all cells.
+    // Wipe the ENTIRE buffer. Never shrink it to the window (that locks scroll).
     DWORD cells = static_cast<DWORD>(csbi.dwSize.X) * static_cast<DWORD>(csbi.dwSize.Y);
     DWORD written = 0;
     COORD home = { 0, 0 };
@@ -1409,9 +1425,11 @@ void NotepadApp::clearScreen(bool resetScroll) const {
     FillConsoleOutputCharacterA(hOut, ' ', cells, home, &written);
     FillConsoleOutputAttribute(hOut, fillAttr, cells, home, &written);
     if (resetScroll) {
+        // Move view to top without locking — keep window smaller than buffer.
         SetConsoleCursorPosition(hOut, home);
         pinViewportTop();
     }
+    ensureScrollableBuffer();
 }
 
 void NotepadApp::setColor(WORD attr) const {
@@ -2315,6 +2333,7 @@ void NotepadApp::handleKey(const KEY_EVENT_RECORD& key) {
 bool NotepadApp::showWelcomeScreen() {
     for (;;) {
         setCookedInput();
+        ensureScrollableBuffer();
         clearScreen(true);
         setColor(attrOk());
         cout << "\n\n";
@@ -2375,6 +2394,7 @@ bool NotepadApp::showWelcomeScreen() {
 void NotepadApp::showMainMenu() {
     while (running_) {
         setCookedInput();
+        ensureScrollableBuffer();
         clearScreen(true);
         setColor(attrTitle());
         cout << "\n\n";
@@ -2500,9 +2520,15 @@ int NotepadApp::run() {
         INPUT_RECORD buffer[64];
         if (!ReadConsoleInput(rhnd, buffer, 64, &readCount)) continue;
         for (DWORD i = 0; i < readCount; ++i) {
+            if (buffer[i].EventType == WINDOW_BUFFER_SIZE_EVENT) {
+                ensureScrollableBuffer();
+                refresh();
+                continue;
+            }
             if (buffer[i].EventType == KEY_EVENT && buffer[i].Event.KeyEvent.bKeyDown) {
                 handleKey(buffer[i].Event.KeyEvent);
                 if (!running_) break;
+                ensureScrollableBuffer();
                 refresh();
             }
         }

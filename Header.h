@@ -241,6 +241,7 @@ private:
     void setCookedInput() const;  // menus / cin prompts
     void setRawEditorInput() const; // ReadConsoleInput editor loop
     void pinViewportTop() const;
+    void ensureScrollableBuffer() const; // buffer always larger than window
     void writePaddedRow(int y, WORD attr, const char* text) const;
     void gotoxy(int x, int y) const;
     void clearScreen(bool resetScroll = true) const;
