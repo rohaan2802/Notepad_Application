@@ -36,7 +36,7 @@ const int STATUS_ROW = 24;
 
 const int DOC_MAX_ROWS = 2000; // near-unlimited document height
 const int MAX_SUGGESTIONS = 8;
-const int WORD_STACK_CAP = 15; // deeper undo/redo for replace/suggest/paste
+const int WORD_STACK_CAP = 200; // deeper undo/redo for replace/suggest/paste
 const int MAX_PATH_BUF = 260;
 const int MAX_QUERY_BUF = 64;
 const int MAX_WORD_BUF = 96;
@@ -293,6 +293,9 @@ private:
 
     void clearSelection();
     void ensureCursorVisible();
+    void adjustWindowForSuggestions(int contentWidth);
+    void recordTypedChar(char ch, int row, int col);
+    void recordRemovedChar(char ch, int row, int col);
     void getTokenBoundsAtCursor(int& startCol, int& endCol) const;
     void ensureSelectionAnchor();
     void getSelectionBounds(int& r0, int& c0, int& r1, int& c1) const;
