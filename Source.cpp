@@ -1755,7 +1755,7 @@ void NotepadApp::drawSuggestions() {
     }
     freeWordList(list);
     gotoxy(2, SUGGEST_TOP + 2);
-    cout << "Tab=#1 suggest | Alt+1-8 pick at cursor | Shift+Arrows select | Ctrl+Z/Y undo/redo";
+    cout << "Suggest pick BOTH modes: Tab=#1 | Alt+1-8 | Letters-only also 1-8 | Ctrl+Z/Y";
     setColor(attrNormal());
 }
 
@@ -1771,22 +1771,28 @@ void NotepadApp::refresh() {
     drawStatus();
 if (showHelp_) {
         setColor(attrTitle());
-        gotoxy(4, 4);
-        cout << "+======== HELP / SHORTCUTS ========+";
-        gotoxy(4, 5);
-        cout << "| Shift+Arrows select | Ctrl+A all  |";
-        gotoxy(4, 6);
-        cout << "| Ctrl+C/X/V copy cut paste         |";
-        gotoxy(4, 7);
-        cout << "| Tab = pick suggestion #1          |";
-        gotoxy(4, 8);
-        cout << "| Alt+1..8 = pick suggestion #N     |";
-        gotoxy(4, 9);
-        cout << "| Ctrl+Z/Y undo/redo | Ctrl+H repl. |";
-        gotoxy(4, 10);
-        cout << "| Ctrl+E = AlphaNumeric mode        |";
-        gotoxy(4, 11);
-        cout << "+==================================+";
+        gotoxy(2, 3);
+        cout << "+============= HELP / SHORTCUTS (current build) =============+";
+        gotoxy(2, 4);
+        cout << "| TYPING: Letters-only default | Ctrl+E = AlphaNumeric mode  |";
+        gotoxy(2, 5);
+        cout << "| Spaces unlimited | Enter new line | Bksp/Del | arrows move |";
+        gotoxy(2, 6);
+        cout << "| Shift+Arrows select | Ctrl+A all | C/X/V copy cut paste    |";
+        gotoxy(2, 7);
+        cout << "| SUGGESTIONS work in BOTH modes (Letters-only AND AlphaNum) |";
+        gotoxy(2, 8);
+        cout << "|   Tab = insert suggestion #1 at cursor (no jump)           |";
+        gotoxy(2, 9);
+        cout << "|   Alt+1..8 = insert that suggestion at cursor (both modes) |";
+        gotoxy(2, 10);
+        cout << "|   Letters-only: plain keys 1-8 also pick when list shows   |";
+        gotoxy(2, 11);
+        cout << "| Ctrl+F find | F3 next | Ctrl+H replace (next or ALL)       |";
+        gotoxy(2, 12);
+        cout << "| Ctrl+Z/Y undo/redo | Esc menu | cursor scrolls at bottom   |";
+        gotoxy(2, 13);
+        cout << "+===========================================================+";
         setColor(attrNormal());
     }
 
@@ -2713,20 +2719,33 @@ void NotepadApp::showMainMenu() {
             break;
         case 7:
             messageBoxInfo(
+                L"NOTEPAD — HELP (current features)\r\n\r\n"
                 L"TYPING\r\n"
-                L"- Letters only by default. Spaces are unlimited.\r\n"
-                L"- Ctrl+E toggles AlphaNumeric mode (letters, numbers, symbols).\r\n"
-                L"- Enter = new line. Backspace/Delete remove text.\r\n"
+                L"- Default: Letters-only. Spaces are unlimited.\r\n"
+                L"- Ctrl+E: AlphaNumeric mode (letters + numbers + symbols).\r\n"
+                L"- Enter = new line. Backspace / Delete remove text.\r\n"
+                L"- At the bottom edge of the notepad pane, the view scrolls down\r\n"
+                L"  (caret stays inside the border, like Windows Notepad).\r\n\r\n"
+                L"SELECTION / CLIPBOARD\r\n"
                 L"- Shift+Arrows select. Ctrl+A select all.\r\n"
-                L"- Ctrl+C copy, Ctrl+X cut, Ctrl+V paste (paste replaces selection).\r\n\r\n"
-                L"SUGGESTIONS (bottom panel)\r\n"
-                L"- Tab inserts suggestion #1 at the cursor (does not jump away).\r\n"
-                L"- Alt+1 .. Alt+8 inserts that numbered suggestion at the cursor.\r\n"
-                L"- In Letters-only mode, keys 1-8 also pick when suggestions show.\r\n\r\n"
+                L"- Ctrl+C copy, Ctrl+X cut, Ctrl+V paste.\r\n"
+                L"- Paste replaces the current selection.\r\n\r\n"
+                L"SUGGESTIONS (bottom panel) — BOTH MODES\r\n"
+                L"- Suggestion pick works in Letters-only AND in AlphaNumeric\r\n"
+                L"  (letters + numbers + symbols) mode.\r\n"
+                L"- Tab = insert suggestion #1 at the cursor (does not jump away).\r\n"
+                L"- Alt+1 .. Alt+8 = insert that numbered suggestion at the cursor\r\n"
+                L"  (works in both Letters-only and AlphaNumeric).\r\n"
+                L"- Letters-only: plain keys 1-8 can also pick when the list shows.\r\n"
+                L"- AlphaNumeric: hold Alt with 1-8 so digits still type normally.\r\n\r\n"
                 L"FIND / REPLACE / UNDO\r\n"
-                L"- Ctrl+F find, F3 find next, Ctrl+H replace (next or ALL).\r\n"
-                L"- Ctrl+Z undo, Ctrl+Y redo (replace, suggestions, paste included).\r\n"
-                L"- Esc = menu. F1 = this help overlay on the editor.",
+                L"- Ctrl+F find, F3 find next.\r\n"
+                L"- Ctrl+H replace — choose next match or Replace ALL.\r\n"
+                L"- Ctrl+Z undo, Ctrl+Y redo (includes replace, suggestions, paste).\r\n\r\n"
+                L"OTHER\r\n"
+                L"- Esc = main menu. F1 = on-screen shortcut overlay.\r\n"
+                L"- Trackpad two-finger scroll / mouse wheel scrolls the view.\r\n"
+                L"- Menu 7 = this Help box.",
                 L"Help");
             break;
         default:
