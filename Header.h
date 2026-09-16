@@ -17,17 +17,17 @@
 // (DOC_MAX_ROWS) with a vertical view scroll — like Notepad + scrollbar.
 // Right search border aligns to SCREEN_COLS - 1.
 // ---------------------------------------------------------------------------
-const int SCREEN_COLS = 90;
+const int SCREEN_COLS = 96;
 const int SCREEN_ROWS = 26;
 
 const int TEXT_LEFT = 1;
 const int TEXT_TOP = 2;
-const int TEXT_COLS = 54;   // ~60% of width
+const int TEXT_COLS = 54;   // notepad text width
 const int TEXT_ROWS = 15;   // visible rows in the text pane (above suggestions)
 
 const int SEARCH_LEFT = 56; // TEXT_LEFT + TEXT_COLS + 1
 const int SEARCH_TOP = 2;
-const int SEARCH_COLS = 33; // SEARCH_LEFT + SEARCH_COLS == SCREEN_COLS - 1
+const int SEARCH_COLS = 39; // SEARCH_LEFT + SEARCH_COLS == SCREEN_COLS - 1 (right | further right)
 const int SEARCH_ROWS = 15;
 
 const int SUGGEST_TOP = 19;
