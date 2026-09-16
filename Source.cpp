@@ -1128,9 +1128,15 @@ void NotepadApp::pinViewportTop() const {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     if (!GetConsoleScreenBufferInfo(hOut, &csbi))
         return;
-    SHORT lastCol = csbi.dwSize.X > 0 ? static_cast<SHORT>(csbi.dwSize.X - 1) : 0;
-    SHORT lastRow = csbi.dwSize.Y > 0 ? static_cast<SHORT>(csbi.dwSize.Y - 1) : 0;
-    SMALL_RECT vis = { 0, 0, lastCol, lastRow };
+    // Keep the current window size — only scroll to the top.
+    // Do NOT expand the window to the full buffer (that locks/hides the scrollbar).
+    SHORT winW = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left);
+    SHORT winH = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top);
+    if (winW < 1) winW = 1;
+    if (winH < 1) winH = 1;
+    if (winW >= csbi.dwSize.X) winW = static_cast<SHORT>(csbi.dwSize.X - 1);
+    if (winH >= csbi.dwSize.Y) winH = static_cast<SHORT>(csbi.dwSize.Y - 1);
+    SMALL_RECT vis = { 0, 0, winW, winH };
     SetConsoleWindowInfo(hOut, TRUE, &vis);
     SetConsoleCursorPosition(hOut, makeCoord(0, 0));
 }
@@ -1184,10 +1190,18 @@ void NotepadApp::setupConsoleDisplay() {
     if (pxW < 640) pxW = 640;
     if (pxH < 400) pxH = 400;
 
-    SHORT fontY = static_cast<SHORT>(pxH / SCREEN_ROWS);
-    // Prefer a larger readable font; still scale with window height.
-    if (fontY > 36) fontY = 36;
-    if (fontY < 22) fontY = 22;
+    // Slightly fewer logical rows => larger glyphs that still fit the work area.
+    const int layoutRows = SCREEN_ROWS;
+    SHORT fontY = static_cast<SHORT>(pxH / layoutRows);
+    // A bit larger than before; still scales with window height.
+    if (fontY > 40) fontY = 40;
+    if (fontY < 24) fontY = 24;
+
+    // If this font would clip a half-row at the bottom, bump size down one step
+    // until every visible row is fully on-screen (no leftover pixels of next text).
+    while (fontY > 18 && (fontY * layoutRows) > pxH) {
+        --fontY;
+    }
 
     CONSOLE_FONT_INFOEX cfi;
     ZeroMemory(&cfi, sizeof(cfi));
@@ -1222,26 +1236,39 @@ void NotepadApp::setupConsoleDisplay() {
     if (cols < SCREEN_COLS) cols = static_cast<SHORT>(SCREEN_COLS);
     if (rows < SCREEN_ROWS) rows = static_cast<SHORT>(SCREEN_ROWS);
 
-    SetConsoleWindowInfo(hOut, TRUE, &tiny);
-    COORD buf = { cols, rows };
-    SetConsoleScreenBufferSize(hOut, buf);
-    pinViewportTop();
-    maximizeConsole();
-    pinViewportTop();
+    // Buffer stays at the fixed layout size (plus a blank safety row at the bottom).
+    // Window can be smaller so the scrollbar is NOT locked; clears wipe the whole buffer
+    // so scrolling never reveals ghost text.
+    SHORT bufCols = cols;
+    SHORT bufRows = static_cast<SHORT>(rows + 1); // +1 blank row => no half-line bleed
+    if (bufCols < SCREEN_COLS) bufCols = static_cast<SHORT>(SCREEN_COLS);
+    if (bufRows < SCREEN_ROWS + 1) bufRows = static_cast<SHORT>(SCREEN_ROWS + 1);
 
-    // Re-read visible window and force buffer == window (kills scroll ghosts).
+    SetConsoleWindowInfo(hOut, TRUE, &tiny);
+    COORD buf = { bufCols, bufRows };
+    SetConsoleScreenBufferSize(hOut, buf);
+
+    // Visible window: fit what the font allows, leave the last buffer row unused.
+    SHORT winCols = cols;
+    SHORT winRows = rows;
+    if (winCols > bufCols) winCols = bufCols;
+    if (winRows > bufRows - 1) winRows = static_cast<SHORT>(bufRows - 1);
+    if (winCols < 40) winCols = 40;
+    if (winRows < 20) winRows = 20;
+    SMALL_RECT win = { 0, 0, static_cast<SHORT>(winCols - 1),
+                       static_cast<SHORT>(winRows - 1) };
+    SetConsoleWindowInfo(hOut, TRUE, &win);
+
+    maximizeConsole();
+    Sleep(40);
+    pinViewportTop(); // scroll to top only — does not lock scrollbar to full buffer
+
+    // Blank the reserved last buffer row so clipped "next line" pixels never show.
     if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
-        SHORT visCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
-        SHORT visRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
-        if (visCols < 40) visCols = 40;
-        if (visRows < 20) visRows = 20;
-        SetConsoleWindowInfo(hOut, TRUE, &tiny);
-        COORD exact = { visCols, visRows };
-        SetConsoleScreenBufferSize(hOut, exact);
-        SMALL_RECT exactWin = { 0, 0, static_cast<SHORT>(visCols - 1),
-                                static_cast<SHORT>(visRows - 1) };
-        SetConsoleWindowInfo(hOut, TRUE, &exactWin);
-        pinViewportTop();
+        DWORD written = 0;
+        COORD bottom = { 0, static_cast<SHORT>(csbi.dwSize.Y - 1) };
+        FillConsoleOutputCharacterA(hOut, ' ', static_cast<DWORD>(csbi.dwSize.X), bottom, &written);
+        FillConsoleOutputAttribute(hOut, attrNormal(), static_cast<DWORD>(csbi.dwSize.X), bottom, &written);
     }
 
     setColor(attrNormal());
@@ -1262,26 +1289,8 @@ void NotepadApp::clearScreen() const {
         return;
     }
 
-    // Shrink buffer to the visible window so old rows cannot scroll back as ghosts.
-    SHORT visCols = static_cast<SHORT>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
-    SHORT visRows = static_cast<SHORT>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
-    if (visCols > 0 && visRows > 0) {
-        if (csbi.dwSize.X != visCols || csbi.dwSize.Y != visRows) {
-            SMALL_RECT tiny = { 0, 0, 1, 1 };
-            SetConsoleWindowInfo(hOut, TRUE, &tiny);
-            COORD exact = { visCols, visRows };
-            SetConsoleScreenBufferSize(hOut, exact);
-            SMALL_RECT exactWin = { 0, 0, static_cast<SHORT>(visCols - 1),
-                                    static_cast<SHORT>(visRows - 1) };
-            SetConsoleWindowInfo(hOut, TRUE, &exactWin);
-            if (!GetConsoleScreenBufferInfo(hOut, &csbi)) {
-                system("cls");
-                pinViewportTop();
-                return;
-            }
-        }
-    }
-
+    // Wipe the ENTIRE buffer (including scrollback). Do not shrink buffer to the
+    // window — that locks the scrollbar. Ghosts are prevented by filling all cells.
     DWORD cells = static_cast<DWORD>(csbi.dwSize.X) * static_cast<DWORD>(csbi.dwSize.Y);
     DWORD written = 0;
     COORD home = { 0, 0 };
@@ -1410,7 +1419,15 @@ void NotepadApp::drawSearchPane() const {
 
 void NotepadApp::drawStatus() const {
     setColor(attrStatus());
-    gotoxy(0, STATUS_ROW);
+    int statusY = STATUS_ROW;
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+        int lastSafe = static_cast<int>(csbi.srWindow.Bottom) - 1; // leave bottom visible row blank
+        if (lastSafe < 1) lastSafe = 1;
+        if (statusY > lastSafe) statusY = lastSafe;
+    }
+    gotoxy(0, statusY);
     const char* name = filePath_[0] ? filePath_ : "(untitled)";
     cout << " Status | " << name << (dirty_ ? " *" : "  ") << " | Ln " << (doc_.cursorRow() + 1)
          << ", Col " << (doc_.cursorCol() + 1) << " | Words " << doc_.wordCount() << " | Chars "
@@ -1477,6 +1494,24 @@ void NotepadApp::refresh() {
         cout << "+================================================================+";
         setColor(attrNormal());
     }
+
+    // Erase any clipped leftover pixels on the bottom-most visible line / buffer row.
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+        DWORD written = 0;
+        SHORT lastVis = csbi.srWindow.Bottom;
+        SHORT width = csbi.dwSize.X;
+        COORD rowHome = { 0, lastVis };
+        FillConsoleOutputCharacterA(hOut, ' ', static_cast<DWORD>(width), rowHome, &written);
+        FillConsoleOutputAttribute(hOut, attrNormal(), static_cast<DWORD>(width), rowHome, &written);
+        if (csbi.dwSize.Y - 1 > lastVis) {
+            COORD bufBottom = { 0, static_cast<SHORT>(csbi.dwSize.Y - 1) };
+            FillConsoleOutputCharacterA(hOut, ' ', static_cast<DWORD>(width), bufBottom, &written);
+            FillConsoleOutputAttribute(hOut, attrNormal(), static_cast<DWORD>(width), bufBottom, &written);
+        }
+    }
+
     gotoxy(TEXT_LEFT + doc_.cursorCol(), TEXT_TOP + doc_.cursorRow());
 }
 
