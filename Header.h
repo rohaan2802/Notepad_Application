@@ -13,28 +13,30 @@
 #include <cstdlib>
 
 // ---------------------------------------------------------------------------
-// Zoomed console layout (~60% text / ~20% Search / ~20% Suggestions).
-// Fewer rows/cols than a dense 120x40 grid so glyphs look screen-zoom large.
+// Zoomed layout: large text pane above suggestions; document can grow long
+// (DOC_MAX_ROWS) with a vertical view scroll — like Notepad + scrollbar.
+// Right search border aligns to SCREEN_COLS - 1.
 // ---------------------------------------------------------------------------
 const int SCREEN_COLS = 90;
-const int SCREEN_ROWS = 24;
+const int SCREEN_ROWS = 26;
 
 const int TEXT_LEFT = 1;
 const int TEXT_TOP = 2;
 const int TEXT_COLS = 54;   // ~60% of width
-const int TEXT_ROWS = 13;   // ~55% of height
+const int TEXT_ROWS = 15;   // visible rows in the text pane (above suggestions)
 
-const int SEARCH_LEFT = 57;
+const int SEARCH_LEFT = 56; // TEXT_LEFT + TEXT_COLS + 1
 const int SEARCH_TOP = 2;
-const int SEARCH_COLS = 31; // ~20%+ right pane
-const int SEARCH_ROWS = 13;
+const int SEARCH_COLS = 33; // SEARCH_LEFT + SEARCH_COLS == SCREEN_COLS - 1
+const int SEARCH_ROWS = 15;
 
-const int SUGGEST_TOP = 16;
-const int SUGGEST_ROWS = 5; // ~20% bottom
-const int STATUS_ROW = 22;
+const int SUGGEST_TOP = 19;
+const int SUGGEST_ROWS = 4;
+const int STATUS_ROW = 24;
 
+const int DOC_MAX_ROWS = 2000; // near-unlimited document height
 const int MAX_SUGGESTIONS = 8;
-const int WORD_STACK_CAP = 5;
+const int WORD_STACK_CAP = 15; // deeper undo/redo for replace/suggest/paste
 const int MAX_PATH_BUF = 260;
 const int MAX_QUERY_BUF = 64;
 const int MAX_WORD_BUF = 96;
@@ -107,7 +109,7 @@ public:
     bool deleteRange(int r0, int c0, int r1, int c1);
     bool insertTextAtCursor(const char* text, bool allowExtended);
 
-    void render(int highlightRow, int highlightCol, int highlightLen,
+    void render(int viewTopRow, int highlightRow, int highlightCol, int highlightLen,
                 int selR0, int selC0, int selR1, int selC1, bool selOn) const;
 
 private:
@@ -122,7 +124,8 @@ private:
     void stripTrailingSpaces(int r);
     int wordStartCol() const;
     bool wrapCurrentWordToNextLine();
-    int maxRows() const { return TEXT_ROWS; }
+    int maxRows() const { return DOC_MAX_ROWS; }
+    int visibleRows() const { return TEXT_ROWS; }
     int maxCols() const { return TEXT_COLS; }
 };
 
@@ -235,6 +238,7 @@ private:
     // Cached word suggestions for 1-8 / Tab pick
     char suggestCache_[MAX_SUGGESTIONS][MAX_WORD_BUF];
     int suggestCount_;
+    int docViewTop_; // first document row shown in the text pane
 
     void maximizeConsole();
     void setupConsoleDisplay();
@@ -288,6 +292,8 @@ private:
     void doEnter();
 
     void clearSelection();
+    void ensureCursorVisible();
+    void getTokenBoundsAtCursor(int& startCol, int& endCol) const;
     void ensureSelectionAnchor();
     void getSelectionBounds(int& r0, int& c0, int& r1, int& c1) const;
     bool hasSelection() const { return selOn_; }

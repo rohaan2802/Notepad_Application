@@ -925,32 +925,33 @@ static bool cellInSelection(int r, int c, int r0, int c0, int r1, int c1, bool s
     return true;
 }
 
-void Document::render(int highlightRow, int highlightCol, int highlightLen,
+void Document::render(int viewTopRow, int highlightRow, int highlightCol, int highlightLen,
                       int selR0, int selC0, int selR1, int selC1, bool selOn) const {
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-    int r = 0;
-    if (head_) {
-        for (Node* row = head_; row; row = row->down, ++r) {
-            SetConsoleCursorPosition(
-                h, makeCoord(static_cast<SHORT>(TEXT_LEFT), static_cast<SHORT>(TEXT_TOP + r)));
-            int c = 0;
-            if (!(row->data == '\0' && !row->right)) {
-                for (Node* p = row; p; p = p->right, ++c) {
-                    bool hl = (highlightLen > 0 && r == highlightRow && c >= highlightCol &&
-                               c < highlightCol + highlightLen);
-                    bool sel = cellInSelection(r, c, selR0, selC0, selR1, selC1, selOn);
-                    SetConsoleTextAttribute(h, (sel || hl) ? attrHighlight() : attrNormal());
-                    cout << p->data;
-                    if (sel || hl) SetConsoleTextAttribute(h, attrNormal());
-                }
-            }
-            for (int i = lineLength(r); i < maxCols(); ++i) cout << ' ';
-        }
-    }
-    for (int rr = (head_ ? lineCount() : 0); rr < maxRows(); ++rr) {
+    const int vis = visibleRows();
+    if (viewTopRow < 0) viewTopRow = 0;
+
+    for (int screen = 0; screen < vis; ++screen) {
+        int r = viewTopRow + screen;
         SetConsoleCursorPosition(
-            h, makeCoord(static_cast<SHORT>(TEXT_LEFT), static_cast<SHORT>(TEXT_TOP + rr)));
-        for (int i = 0; i < maxCols(); ++i) cout << ' ';
+            h, makeCoord(static_cast<SHORT>(TEXT_LEFT), static_cast<SHORT>(TEXT_TOP + screen)));
+        if (r >= lineCount()) {
+            for (int i = 0; i < maxCols(); ++i) cout << ' ';
+            continue;
+        }
+        int c = 0;
+        Node* row = rowHead(r);
+        if (row && !(row->data == '\0' && !row->right)) {
+            for (Node* p = row; p; p = p->right, ++c) {
+                bool hl = (highlightLen > 0 && r == highlightRow && c >= highlightCol &&
+                           c < highlightCol + highlightLen);
+                bool sel = cellInSelection(r, c, selR0, selC0, selR1, selC1, selOn);
+                SetConsoleTextAttribute(h, (sel || hl) ? attrHighlight() : attrNormal());
+                cout << p->data;
+                if (sel || hl) SetConsoleTextAttribute(h, attrNormal());
+            }
+        }
+        for (int i = c; i < maxCols(); ++i) cout << ' ';
     }
     SetConsoleTextAttribute(h, attrNormal());
 }
@@ -1163,7 +1164,8 @@ NotepadApp::NotepadApp()
       selOn_(false),
       selAnchorRow_(0),
       selAnchorCol_(0),
-      suggestCount_(0) {
+      suggestCount_(0),
+      docViewTop_(0) {
     filePath_[0] = '\0';
     findQuery_[0] = '\0';
     replaceQuery_[0] = '\0';
@@ -1584,24 +1586,26 @@ bool NotepadApp::isWordChar(char ch) const {
 
 void NotepadApp::drawChrome() const {
     writePaddedRow(0, attrTitle(), "+-- NOTEPAD — Editor --+");
-    writePaddedRow(1, attrDim(), "| Esc=Menu | F1 Help | Ctrl+N/O/S | Ctrl+Z/Y | Ctrl+F | F3 |");
+    writePaddedRow(1, attrDim(), "| Esc Menu | F1 Help | Tab/Alt+1-8 Suggest | Ctrl+E AlphaNumeric | Ctrl+Z/Y |");
 
-    // Text pane left border + Search right pane borders
+    // Text pane + search pane; right edge locked to SCREEN_COLS - 1 for clean alignment.
+    const int rightEdge = SCREEN_COLS - 1;
     for (int y = TEXT_TOP; y < TEXT_TOP + TEXT_ROWS; ++y) {
         setColor(attrNormal());
         gotoxy(0, y);
         cout << '|';
         gotoxy(TEXT_LEFT + TEXT_COLS, y);
         cout << '|';
-        gotoxy(SEARCH_LEFT + SEARCH_COLS, y);
+        gotoxy(rightEdge, y);
         cout << '|';
     }
-    // Bottom of text/search
     gotoxy(0, TEXT_TOP + TEXT_ROWS);
     cout << '+';
     for (int i = 0; i < TEXT_COLS; ++i) cout << '-';
     cout << '+';
-    for (int i = 0; i < SEARCH_COLS; ++i) cout << '-';
+    int mid = rightEdge - (TEXT_LEFT + TEXT_COLS) - 1;
+    if (mid < 0) mid = 0;
+    for (int i = 0; i < mid; ++i) cout << '-';
     cout << '+';
 
     // Suggestions frame
@@ -1681,11 +1685,20 @@ void NotepadApp::drawStatus() const {
     }
     gotoxy(0, statusY);
     const char* name = filePath_[0] ? filePath_ : "(untitled)";
-    cout << " Status | " << name << (dirty_ ? " *" : "  ") << " | Ln " << (doc_.cursorRow() + 1)
-         << ", Col " << (doc_.cursorCol() + 1) << " | Words " << doc_.wordCount() << " | Chars "
-         << doc_.charCount() << " | Undo:" << history_.undoDepth() << "/" << WORD_STACK_CAP
-         << " Redo:" << history_.redoDepth() << "/" << WORD_STACK_CAP
-         << (extendedMode_ ? " | Letters+symbols" : " | Letters only") << " | F1 Help";
+    cout << " Status | " << name << (dirty_ ? " *" : "  ")
+         << " | Ln " << (doc_.cursorRow() + 1)
+         << ", Col " << (doc_.cursorCol() + 1)
+         << " | Words " << doc_.wordCount()
+         << " | Undo " << history_.undoDepth() << "/" << WORD_STACK_CAP
+         << " Redo " << history_.redoDepth() << "/" << WORD_STACK_CAP
+         << (extendedMode_ ? " | AlphaNumeric" : " | Letters only");
+    // Pad rest of line; do not append stray F/F1 fragments.
+    CONSOLE_SCREEN_BUFFER_INFO csbi2;
+    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi2)) {
+        int x = csbi2.dwCursorPosition.X;
+        int w = csbi2.dwSize.X;
+        for (int i = x; i < w; ++i) cout << ' ';
+    }
     setColor(attrNormal());
 }
 
@@ -1718,7 +1731,7 @@ void NotepadApp::drawSuggestions() {
     }
     freeWordList(list);
     gotoxy(2, SUGGEST_TOP + 2);
-    cout << "Shift+Arrows select | Ctrl+A all | Ctrl+C/X/V | Ctrl+H replace | 1-8 pick";
+    cout << "Tab=#1 suggest | Alt+1-8 pick at cursor | Shift+Arrows select | Ctrl+Z/Y undo/redo";
     setColor(attrNormal());
 }
 
@@ -1727,7 +1740,8 @@ void NotepadApp::refresh() {
     drawChrome();
     int r0 = 0, c0 = 0, r1 = 0, c1 = 0;
     if (selOn_) getSelectionBounds(r0, c0, r1, c1);
-    doc_.render(hlRow_, hlCol_, hlLen_, r0, c0, r1, c1, selOn_);
+    ensureCursorVisible();
+    doc_.render(docViewTop_, hlRow_, hlCol_, hlLen_, r0, c0, r1, c1, selOn_);
     drawSearchPane();
     drawSuggestions();
     drawStatus();
@@ -1736,17 +1750,17 @@ if (showHelp_) {
         gotoxy(4, 4);
         cout << "+======== HELP / SHORTCUTS ========+";
         gotoxy(4, 5);
-        cout << "| Shift+Arrows = select text       |";
+        cout << "| Shift+Arrows select | Ctrl+A all  |";
         gotoxy(4, 6);
-        cout << "| Ctrl+A all | C/X/V copy/cut/paste|";
+        cout << "| Ctrl+C/X/V copy cut paste         |";
         gotoxy(4, 7);
-        cout << "| Ctrl+H replace (all option)      |";
+        cout << "| Tab = pick suggestion #1          |";
         gotoxy(4, 8);
-        cout << "| 1-8 or Tab = pick suggestion     |";
+        cout << "| Alt+1..8 = pick suggestion #N     |";
         gotoxy(4, 9);
-        cout << "| Esc = menu | spaces freely OK    |";
+        cout << "| Ctrl+Z/Y undo/redo | Ctrl+H repl. |";
         gotoxy(4, 10);
-        cout << "| Ctrl+E = numbers and symbols     |";
+        cout << "| Ctrl+E = AlphaNumeric mode        |";
         gotoxy(4, 11);
         cout << "+==================================+";
         setColor(attrNormal());
@@ -1864,29 +1878,80 @@ void NotepadApp::actionSelectAll() {
     doc_.moveDocEnd();
 }
 
+
+void NotepadApp::ensureCursorVisible() {
+    int r = doc_.cursorRow();
+    if (r < docViewTop_) docViewTop_ = r;
+    if (r >= docViewTop_ + TEXT_ROWS) docViewTop_ = r - TEXT_ROWS + 1;
+    if (docViewTop_ < 0) docViewTop_ = 0;
+}
+
+void NotepadApp::getTokenBoundsAtCursor(int& startCol, int& endCol) const {
+    char line[512];
+    doc_.copyLine(doc_.cursorRow(), line, 512);
+    int len = static_cast<int>(strlen(line));
+    int c = doc_.cursorCol();
+    if (c > len) c = len;
+    startCol = c;
+    endCol = c;
+    // If cursor is mid-token or just after a token char, expand to full token.
+    int i = c;
+    if (i > 0 && (i >= len || !isWordChar(line[i]))) --i;
+    if (i < 0 || i >= len || !isWordChar(line[i])) {
+        startCol = c;
+        endCol = c;
+        return;
+    }
+    startCol = i;
+    while (startCol > 0 && isWordChar(line[startCol - 1])) --startCol;
+    endCol = i;
+    while (endCol + 1 < len && isWordChar(line[endCol + 1])) ++endCol;
+    ++endCol; // exclusive
+}
+
 void NotepadApp::actionApplySuggestion(int index) {
     if (index < 0 || index >= suggestCount_) return;
     const char* word = suggestCache_[index];
     if (!word[0]) return;
-    commitPendingWord();
+
+    // Drop pending typing without committing — we replace the token at the cursor.
+    freeCharList(pendingWord_);
+    pendingWord_ = nullptr;
     deleteSelectionIfAny();
 
-    char cur[MAX_WORD_BUF];
-    doc_.copyWordAtCursor(cur, MAX_WORD_BUF);
-    if (cur[0]) {
+    int row = doc_.cursorRow();
+    int start = 0, end = 0;
+    getTokenBoundsAtCursor(start, end);
+
+    char oldTok[MAX_WORD_BUF];
+    oldTok[0] = '\0';
+    if (end > start) {
         char line[512];
-        doc_.copyLine(doc_.cursorRow(), line, 512);
-        const char* pos = strstr(line, cur);
-        if (pos) {
-            int start = static_cast<int>(pos - line);
-            int len = static_cast<int>(strlen(cur));
-            doc_.eraseWordAt(doc_.cursorRow(), start, len);
-            doc_.setCursor(doc_.cursorRow(), start);
-        }
+        doc_.copyLine(row, line, 512);
+        int n = end - start;
+        if (n >= MAX_WORD_BUF) n = MAX_WORD_BUF - 1;
+        for (int i = 0; i < n; ++i) oldTok[i] = line[start + i];
+        oldTok[n] = '\0';
+        doc_.eraseWordAt(row, start, end - start);
     }
+    doc_.setCursor(row, start);
+    int insertAt = start;
     doc_.insertTextAtCursor(word, extendedMode_);
+
+    // Undo stack is LIFO: record old-delete first, then new-insert so the
+    // first Ctrl+Z removes the suggestion and the next restores the old token.
+    if (oldTok[0]) {
+        CharNode* oldw = nullptr;
+        charsFromCStr(oldw, oldTok);
+        history_.recordDelete(oldw, row, insertAt);
+    }
+    CharNode* neu = nullptr;
+    charsFromCStr(neu, word);
+    history_.recordInsert(neu, row, insertAt);
+
     dirty_ = true;
     hlLen_ = 0;
+    ensureCursorVisible();
 }
 
 void NotepadApp::actionNew() {
@@ -1895,6 +1960,7 @@ void NotepadApp::actionNew() {
     freeCharList(pendingWord_);
     doc_.clear();
     history_.clear();
+    docViewTop_ = 0;
     filePath_[0] = '\0';
     dirty_ = false;
     hlLen_ = 0;
@@ -2023,9 +2089,17 @@ void NotepadApp::actionReplaceAll() {
         int flen = static_cast<int>(strlen(findQuery_));
         int rlen = static_cast<int>(strlen(replaceQuery_));
         doc_.setCursor(r, c);
+        CharNode* oldw = nullptr;
+        charsFromCStr(oldw, findQuery_);
+        history_.recordDelete(oldw, r, c);
         for (int i = 0; i < flen; ++i) {
             char rm;
             doc_.deleteForward(rm);
+        }
+        if (rlen > 0) {
+            CharNode* neu = nullptr;
+            charsFromCStr(neu, replaceQuery_);
+            history_.recordInsert(neu, r, c);
         }
         doc_.insertTextAtCursor(replaceQuery_, extendedMode_);
         ++replaced;
@@ -2073,15 +2147,25 @@ void NotepadApp::actionReplace() {
     commitPendingWord();
     clearSelection();
     int flen = static_cast<int>(strlen(findQuery_));
+    CharNode* oldw = nullptr;
+    charsFromCStr(oldw, findQuery_);
+    history_.recordDelete(oldw, r, c);
     for (int i = 0; i < flen; ++i) {
         char rm;
         doc_.deleteForward(rm);
+    }
+    int rlen = static_cast<int>(strlen(replaceQuery_));
+    if (rlen > 0) {
+        CharNode* neu = nullptr;
+        charsFromCStr(neu, replaceQuery_);
+        history_.recordInsert(neu, r, c);
     }
     doc_.insertTextAtCursor(replaceQuery_, extendedMode_);
     dirty_ = true;
     hlRow_ = r;
     hlCol_ = c;
-    hlLen_ = static_cast<int>(strlen(replaceQuery_));
+    hlLen_ = rlen;
+    ensureCursorVisible();
 }
 
 void NotepadApp::actionCopy() {
@@ -2131,9 +2215,22 @@ void NotepadApp::actionPaste() {
     char buf[8192];
     charsToBuf(clipboard_, buf, 8192);
     if (!buf[0]) return;
+    int row = doc_.cursorRow();
+    int col = doc_.cursorCol();
+    // Record first token-sized chunk for undo (full paste still inserted).
+    char undoBuf[MAX_WORD_BUF];
+    int n = 0;
+    for (; buf[n] && n + 1 < MAX_WORD_BUF && buf[n] != '\n'; ++n) undoBuf[n] = buf[n];
+    undoBuf[n] = '\0';
+    if (undoBuf[0]) {
+        CharNode* neu = nullptr;
+        charsFromCStr(neu, undoBuf);
+        history_.recordInsert(neu, row, col);
+    }
     doc_.insertTextAtCursor(buf, extendedMode_);
     dirty_ = true;
     hlLen_ = 0;
+    ensureCursorVisible();
 }
 
 void NotepadApp::actionHelp() { showHelp_ = !showHelp_; }
@@ -2141,12 +2238,12 @@ void NotepadApp::actionHelp() { showHelp_ = !showHelp_; }
 void NotepadApp::actionToggleExtended() {
     extendedMode_ = !extendedMode_;
     messageBoxInfo(extendedMode_
-                       ? L"Extended typing is ON.\r\n"
+                       ? L"AlphaNumeric mode is ON.\r\n"
                          L"You can type letters, numbers, and symbols.\r\n"
-                         L"Press Ctrl+E again to go back to letters only."
-                       : L"Letters-only typing is ON.\r\n"
+                         L"Press Ctrl+E again for Letters only."
+                       : L"Letters-only mode is ON.\r\n"
                          L"Only letters and spaces are allowed.\r\n"
-                         L"Press Ctrl+E to allow numbers and symbols.",
+                         L"Press Ctrl+E for AlphaNumeric mode.",
                    L"Typing Mode");
 }
 
@@ -2571,12 +2668,20 @@ void NotepadApp::showMainMenu() {
             break;
         case 7:
             messageBoxInfo(
-                L"Typing: letters only by default. Space separates words.\r\n"
-                L"Enter starts a new line. Backspace and Delete remove text.\r\n"
-                L"Ctrl+Z undoes the last word; Ctrl+Y redoes it (up to 5).\r\n"
-                L"Menu: New / Open / Save / Exit. Esc opens the menu. 0 goes back.\r\n"
-                L"F1 Help, Ctrl+F Find, F3 Find next, Ctrl+H Replace.\r\n"
-                L"Ctrl+E allows numbers and symbols. Ctrl+C / X / V for copy/cut/paste.",
+                L"TYPING\r\n"
+                L"- Letters only by default. Spaces are unlimited.\r\n"
+                L"- Ctrl+E toggles AlphaNumeric mode (letters, numbers, symbols).\r\n"
+                L"- Enter = new line. Backspace/Delete remove text.\r\n"
+                L"- Shift+Arrows select. Ctrl+A select all.\r\n"
+                L"- Ctrl+C copy, Ctrl+X cut, Ctrl+V paste (paste replaces selection).\r\n\r\n"
+                L"SUGGESTIONS (bottom panel)\r\n"
+                L"- Tab inserts suggestion #1 at the cursor (does not jump away).\r\n"
+                L"- Alt+1 .. Alt+8 inserts that numbered suggestion at the cursor.\r\n"
+                L"- In Letters-only mode, keys 1-8 also pick when suggestions show.\r\n\r\n"
+                L"FIND / REPLACE / UNDO\r\n"
+                L"- Ctrl+F find, F3 find next, Ctrl+H replace (next or ALL).\r\n"
+                L"- Ctrl+Z undo, Ctrl+Y redo (replace, suggestions, paste included).\r\n"
+                L"- Esc = menu. F1 = this help overlay on the editor.",
                 L"Help");
             break;
         default:
@@ -2624,10 +2729,26 @@ int NotepadApp::run() {
                 continue;
             }
             if (buffer[i].EventType == MOUSE_EVENT) {
-                // Two-finger trackpad / mouse wheel scroll (like other Windows apps).
-                if (handleMouseWheel(buffer[i].Event.MouseEvent)) {
-                    // Keep editor chrome aligned after scroll.
-                    // Do not full-refresh every wheel tick if possible — still OK.
+                const MOUSE_EVENT_RECORD& mouse = buffer[i].Event.MouseEvent;
+                if (mouse.dwEventFlags & MOUSE_WHEELED) {
+                    const SHORT delta = static_cast<SHORT>((mouse.dwButtonState >> 16) & 0xFFFF);
+                    int steps = static_cast<int>(delta) / WHEEL_DELTA;
+                    if (steps == 0) steps = (delta > 0) ? 1 : -1;
+                    // Prefer scrolling the document view (Notepad-like). Fall back
+                    // to console viewport scroll if already at doc bounds.
+                    int before = docViewTop_;
+                    docViewTop_ -= steps * 3;
+                    if (docViewTop_ < 0) docViewTop_ = 0;
+                    int maxTop = doc_.lineCount() - TEXT_ROWS;
+                    if (maxTop < 0) maxTop = 0;
+                    if (docViewTop_ > maxTop) docViewTop_ = maxTop;
+                    if (docViewTop_ != before) {
+                        refresh();
+                    } else {
+                        handleMouseWheel(mouse);
+                    }
+                } else {
+                    handleMouseWheel(mouse);
                 }
                 continue;
             }
